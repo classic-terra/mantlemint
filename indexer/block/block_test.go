@@ -2,7 +2,7 @@ package block
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
@@ -14,7 +14,7 @@ import (
 func TestIndexBlock(t *testing.T) {
 	db := tmdb.NewMemDB()
 	blockFile, _ := os.Open("../fixtures/block_4724005_raw.json")
-	blockJSON, _ := ioutil.ReadAll(blockFile)
+	blockJSON, _ := io.ReadAll(blockFile)
 
 	record := BlockRecord{}
 	_ = tmjson.Unmarshal(blockJSON, &record)

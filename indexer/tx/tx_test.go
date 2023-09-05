@@ -2,7 +2,7 @@ package tx
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
@@ -17,13 +17,13 @@ func TestIndexTx(t *testing.T) {
 	db := tmdb.NewMemDB()
 	block := &tendermint.Block{}
 	blockFile, _ := os.Open("../fixtures/block_4814775.json")
-	blockJSON, _ := ioutil.ReadAll(blockFile)
+	blockJSON, _ := io.ReadAll(blockFile)
 	if err := tmjson.Unmarshal(blockJSON, block); err != nil {
 		t.Fail()
 	}
 
 	eventFile, _ := os.Open("../fixtures/response_4814775.json")
-	eventJSON, _ := ioutil.ReadAll(eventFile)
+	eventJSON, _ := io.ReadAll(eventFile)
 	evc := mantlemint.NewMantlemintEventCollector()
 	event := tendermint.EventDataTx{}
 	if err := tmjson.Unmarshal(eventJSON, &event.Result); err != nil {

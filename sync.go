@@ -4,7 +4,6 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"runtime/debug"
@@ -253,7 +252,7 @@ func fauxMerkleModeOpt(app *baseapp.BaseApp) {
 }
 
 func getGenesisDoc(genesisPath string) *tendermint.GenesisDoc {
-	jsonBlob, _ := ioutil.ReadFile(genesisPath)
+	jsonBlob, _ := os.ReadFile(genesisPath)
 	shasum := sha1.New()
 	shasum.Write(jsonBlob)
 	sum := hex.EncodeToString(shasum.Sum(nil))

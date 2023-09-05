@@ -9,6 +9,14 @@ else
 	go build -mod=readonly $(BUILD_FLAGS) -o build/mantlemint ./sync.go
 endif
 
+lint:
+	golangci-lint run --out-format=tab
+
+lint-fix:
+	golangci-lint run --fix --out-format=tab --issues-exit-code=0
+
+lint-strict:
+	find . -path './_build' -prune -o -type f -name '*.go' -exec gofumpt -w -l {} +
 
 build-static:
 	mkdir -p $(BUILDDIR)

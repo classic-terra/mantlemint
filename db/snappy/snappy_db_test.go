@@ -1,7 +1,7 @@
 package snappy
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
@@ -85,7 +85,7 @@ func TestSnappyDBCompat(t *testing.T) {
 func indexSampleTx(mdb db.DB, key []byte) {
 	block := &tendermint.Block{}
 	blockFile, _ := os.Open("../../indexer/fixtures/block_4814775.json")
-	blockJSON, _ := ioutil.ReadAll(blockFile)
+	blockJSON, _ := io.ReadAll(blockFile)
 	if err := tmjson.Unmarshal(blockJSON, block); err != nil {
 		panic(err)
 	}
