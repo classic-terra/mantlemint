@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/CosmWasm/wasmd v0.30.0
-	github.com/classic-terra/core/v2 v2.2.1
+	github.com/classic-terra/core/v2 v2.2.2-rc.0
 	github.com/cometbft/cometbft-db v0.7.0
 	github.com/cosmos/cosmos-sdk v0.46.14
 	github.com/cosmos/iavl v0.19.7
@@ -185,10 +185,10 @@ replace (
 replace (
 	github.com/CosmWasm/wasmd => github.com/classic-terra/wasmd v0.30.0-terra.3
 	github.com/CosmWasm/wasmvm => github.com/classic-terra/wasmvm v1.1.1-terra.1
-	github.com/cosmos/cosmos-sdk => github.com/classic-terra/cosmos-sdk v0.46.15-0.20230915003402-dee6498fe95d
+	github.com/cosmos/cosmos-sdk => github.com/classic-terra/cosmos-sdk v0.46.14-terra.4
 	github.com/cosmos/ledger-cosmos-go => github.com/terra-money/ledger-terra-go v0.11.2
 	// replace goleveldb to optimized one
-	github.com/syndtr/goleveldb => github.com/classic-terra/goleveldb v0.0.0-20230917024316-691646a040eb
+	github.com/syndtr/goleveldb => github.com/classic-terra/goleveldb v0.0.0-20230914223247-2b28f6655121
 	github.com/tendermint/tendermint => github.com/classic-terra/cometbft v0.34.29-terra.0
 	github.com/tendermint/tm-db => github.com/terra-money/tm-db v0.6.7-performance.3
 )
