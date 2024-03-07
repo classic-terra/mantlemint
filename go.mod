@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/CosmWasm/wasmd v0.30.0
-	github.com/classic-terra/core/v2 v2.4.0
+	github.com/classic-terra/core/v2 v2.4.2
 	github.com/cometbft/cometbft-db v0.7.0
 	github.com/cosmos/cosmos-sdk v0.46.15
 	github.com/cosmos/iavl v0.19.7
@@ -53,7 +53,6 @@ require (
 	github.com/cosmos/go-bip39 v1.0.0 // indirect
 	github.com/cosmos/gogoproto v1.4.11 // indirect
 	github.com/cosmos/gorocksdb v1.2.0 // indirect
-	github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v6 v6.1.1 // indirect
 	github.com/cosmos/ibc-go/v6 v6.2.1 // indirect
 	github.com/cosmos/ledger-cosmos-go v0.12.2 // indirect
 	github.com/cosmos/ledger-go v0.9.3 // indirect
@@ -103,7 +102,6 @@ require (
 	github.com/hashicorp/go-version v1.6.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hdevalence/ed25519consensus v0.0.0-20220222234857-c00d1f31bab3 // indirect
-	github.com/iancoleman/orderedmap v0.2.0 // indirect
 	github.com/improbable-eng/grpc-web v0.15.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
