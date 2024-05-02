@@ -16,9 +16,9 @@ import (
 	"github.com/cometbft/cometbft/proxy"
 	tendermint "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
+	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/gorilla/mux"
-	"github.com/spf13/viper"
 	blockFeeder "github.com/terra-money/mantlemint/block_feed"
 	"github.com/terra-money/mantlemint/config"
 	"github.com/terra-money/mantlemint/db/heleveldb"
@@ -70,7 +70,8 @@ func main() {
 
 	// customize CMS to limit kv store's read height on query
 	cms := rootmulti.NewStore(batched, logger, hldb)
-	vpr := viper.GetViper()
+	//vpr := viper.GetViper()
+	appOptions := make(simtestutil.AppOptionsMap, 0)
 
 	var wasmOpts []wasm.Option
 	app := terra.NewTerraApp(
@@ -80,9 +81,8 @@ func main() {
 		true, // need this so KVStores are set
 		make(map[int64]bool),
 		mantlemintConfig.Home,
-		0,
 		codec,
-		vpr,
+		appOptions,
 		wasmOpts,
 		fauxMerkleModeOpt,
 		func(ba *baseapp.BaseApp) {
@@ -92,7 +92,8 @@ func main() {
 
 	// create app...
 	appCreator := mantlemint.NewConcurrentQueryClientCreator(app)
-	appConns := proxy.NewAppConns(appCreator)
+	appMetrics := proxy.NopMetrics()
+	appConns := proxy.NewAppConns(appCreator, appMetrics)
 	appConns.SetLogger(logger)
 	if startErr := appConns.OnStart(); startErr != nil {
 		panic(startErr)

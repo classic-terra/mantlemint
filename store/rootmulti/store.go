@@ -11,8 +11,8 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/log"
+	protoio "github.com/cosmos/gogoproto/io"
 	iavltree "github.com/cosmos/iavl"
-	protoio "github.com/gogo/protobuf/io"
 	gogotypes "github.com/gogo/protobuf/types"
 	"github.com/pkg/errors"
 	"github.com/terra-money/mantlemint/db/hld"
@@ -804,7 +804,7 @@ func (rs *Store) Snapshot(height uint64, protoWriter protoio.Writer) error {
 
 		for {
 			node, err := exporter.Next()
-			if err == iavltree.ExportDone {
+			if err == iavltree.ErrorExportDone {
 				break
 			} else if err != nil {
 				return err

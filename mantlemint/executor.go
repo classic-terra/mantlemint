@@ -29,7 +29,7 @@ func NewMantlemintExecutor(
 		conn,
 
 		// no mempool, as mantlemint doesn't handle tx broadcasts
-		mocks.Mempool{},
+		&mocks.Mempool{},
 
 		// no evidence pool, as mantlemint only receives evidence from other peers
 		state.EmptyEvidencePool{},
