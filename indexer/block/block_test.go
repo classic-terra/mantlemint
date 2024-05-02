@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
+	dbm "github.com/cometbft/cometbft-db"
+	tmjson "github.com/cometbft/cometbft/libs/json"
 	"github.com/stretchr/testify/assert"
-	tmjson "github.com/tendermint/tendermint/libs/json"
-	dbm "github.com/tendermint/tm-db"
 )
 
 func TestIndexBlock(t *testing.T) {

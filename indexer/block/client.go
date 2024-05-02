@@ -8,8 +8,8 @@ import (
 
 	"github.com/pkg/errors"
 
+	dbm "github.com/cometbft/cometbft-db"
 	"github.com/gorilla/mux"
-	dbm "github.com/tendermint/tm-db"
 	"github.com/terra-money/mantlemint/indexer"
 )
 

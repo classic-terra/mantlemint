@@ -1,6 +1,6 @@
 package hld
 
-import dbm "github.com/tendermint/tm-db"
+import dbm "github.com/cometbft/cometbft-db"
 
 var _ dbm.Iterator = (*HeightLimitedDBIterator)(nil)
 

@@ -3,7 +3,7 @@ package safe_batch
 import (
 	"fmt"
 
-	dbm "github.com/tendermint/tm-db"
+	dbm "github.com/cometbft/cometbft-db"
 	"github.com/terra-money/mantlemint/db/rollbackable"
 )
 

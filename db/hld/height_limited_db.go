@@ -7,7 +7,7 @@ import (
 
 	"github.com/terra-money/mantlemint/lib"
 
-	dbm "github.com/tendermint/tm-db"
+	dbm "github.com/cometbft/cometbft-db"
 )
 
 const (

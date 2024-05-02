@@ -6,10 +6,10 @@ import (
 	"os"
 	"testing"
 
+	dbm "github.com/cometbft/cometbft-db"
+	tmjson "github.com/cometbft/cometbft/libs/json"
+	tendermint "github.com/cometbft/cometbft/types"
 	"github.com/stretchr/testify/assert"
-	tmjson "github.com/tendermint/tendermint/libs/json"
-	tendermint "github.com/tendermint/tendermint/types"
-	dbm "github.com/tendermint/tm-db"
 	"github.com/terra-money/mantlemint/mantlemint"
 )
 

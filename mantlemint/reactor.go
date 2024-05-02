@@ -4,15 +4,15 @@ import (
 	"log"
 	"sync"
 
-	"github.com/tendermint/tendermint/consensus"
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/proxy"
-	"github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/store"
-	tendermint "github.com/tendermint/tendermint/types"
+	"github.com/cometbft/cometbft/consensus"
+	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/proxy"
+	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/store"
+	tendermint "github.com/cometbft/cometbft/types"
 	"github.com/terra-money/mantlemint/db/wrapped"
 
-	dbm "github.com/tendermint/tm-db"
+	dbm "github.com/cometbft/cometbft-db"
 )
 
 var _ Mantlemint = (*Instance)(nil)

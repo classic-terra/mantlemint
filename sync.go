@@ -10,15 +10,15 @@ import (
 
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	terra "github.com/classic-terra/core/v2/app"
-	core "github.com/classic-terra/core/v2/types"
+	terra "github.com/classic-terra/core/v3/app"
+	core "github.com/classic-terra/core/v3/types"
+	tmlog "github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/proxy"
+	tendermint "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/gorilla/mux"
 	"github.com/spf13/viper"
-	tmlog "github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/proxy"
-	tendermint "github.com/tendermint/tendermint/types"
 	blockFeeder "github.com/terra-money/mantlemint/block_feed"
 	"github.com/terra-money/mantlemint/config"
 	"github.com/terra-money/mantlemint/db/heleveldb"
@@ -31,7 +31,7 @@ import (
 	"github.com/terra-money/mantlemint/rpc"
 	"github.com/terra-money/mantlemint/store/rootmulti"
 
-	dbm "github.com/tendermint/tm-db"
+	dbm "github.com/cometbft/cometbft-db"
 )
 
 // initialize mantlemint for v0.34.x

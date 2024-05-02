@@ -7,8 +7,10 @@ import (
 	"strconv"
 	"time"
 
-	terra "github.com/classic-terra/core/v2/app"
-	"github.com/classic-terra/core/v2/app/params"
+	terra "github.com/classic-terra/core/v3/app"
+	"github.com/classic-terra/core/v3/app/params"
+	tmlog "github.com/cometbft/cometbft/libs/log"
+	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/server/api"
 	"github.com/cosmos/cosmos-sdk/server/config"
@@ -16,8 +18,6 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/gorilla/mux"
 	"github.com/spf13/viper"
-	tmlog "github.com/tendermint/tendermint/libs/log"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
 )
 
 func StartRPC(

@@ -3,9 +3,9 @@ package height
 import (
 	"fmt"
 
-	tmjson "github.com/tendermint/tendermint/libs/json"
-	tm "github.com/tendermint/tendermint/types"
-	dbm "github.com/tendermint/tm-db"
+	dbm "github.com/cometbft/cometbft-db"
+	tmjson "github.com/cometbft/cometbft/libs/json"
+	tm "github.com/cometbft/cometbft/types"
 	"github.com/terra-money/mantlemint/indexer"
 	"github.com/terra-money/mantlemint/mantlemint"
 )

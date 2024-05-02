@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
+	dbm "github.com/cometbft/cometbft-db"
+	tm "github.com/cometbft/cometbft/types"
 	"github.com/gorilla/mux"
-	tm "github.com/tendermint/tendermint/types"
-	dbm "github.com/tendermint/tm-db"
 	"github.com/terra-money/mantlemint/db/snappy"
 	"github.com/terra-money/mantlemint/mantlemint"
 )

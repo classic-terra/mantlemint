@@ -1,8 +1,8 @@
 package snappy
 
 import (
+	dbm "github.com/cometbft/cometbft-db"
 	"github.com/golang/snappy"
-	dbm "github.com/tendermint/tm-db"
 )
 
 var _ dbm.Batch = (*SnappyBatch)(nil)

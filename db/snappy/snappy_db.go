@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"sync"
 
+	dbm "github.com/cometbft/cometbft-db"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
-	dbm "github.com/tendermint/tm-db"
 )
 
 const (

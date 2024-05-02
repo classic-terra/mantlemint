@@ -2,17 +2,16 @@ package wrapped
 
 import (
 	cmdb "github.com/cometbft/cometbft-db"
-	tmdb "github.com/tendermint/tm-db"
 )
 
 // WrappedDB wraps the DB of tm-db and implements the cometbft-db DB interface.
 var _ cmdb.DB = (*WrappedDB)(nil)
 
 type WrappedDB struct {
-	db tmdb.DB
+	db cmdb.DB
 }
 
-func NewWrappedDB(db tmdb.DB) *WrappedDB {
+func NewWrappedDB(db cmdb.DB) *WrappedDB {
 	return &WrappedDB{
 		db: db,
 	}

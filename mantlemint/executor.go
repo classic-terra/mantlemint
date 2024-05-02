@@ -3,13 +3,13 @@ package mantlemint
 import (
 	"os"
 
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/mempool/mock"
-	"github.com/tendermint/tendermint/proxy"
-	"github.com/tendermint/tendermint/state"
+	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/mempool/mocks"
+	"github.com/cometbft/cometbft/proxy"
+	"github.com/cometbft/cometbft/state"
 	"github.com/terra-money/mantlemint/db/wrapped"
 
-	dbm "github.com/tendermint/tm-db"
+	dbm "github.com/cometbft/cometbft-db"
 )
 
 // NewMantlemintExecutor creates stock tendermint block executor, with stubbed mempool and evidence pool
@@ -29,7 +29,7 @@ func NewMantlemintExecutor(
 		conn,
 
 		// no mempool, as mantlemint doesn't handle tx broadcasts
-		mock.Mempool{},
+		mocks.Mempool{},
 
 		// no evidence pool, as mantlemint only receives evidence from other peers
 		state.EmptyEvidencePool{},

@@ -4,8 +4,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/store/dbadapter"
 	"github.com/cosmos/cosmos-sdk/store/types"
 
-	pruningtypes "github.com/cosmos/cosmos-sdk/pruning/types"
-	dbm "github.com/tendermint/tm-db"
+	dbm "github.com/cometbft/cometbft-db"
+	pruningtypes "github.com/cosmos/cosmos-sdk/store/pruning/types"
 )
 
 var commithash = []byte("FAKE_HASH")
