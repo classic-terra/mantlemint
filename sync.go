@@ -88,6 +88,7 @@ func main() {
 		func(ba *baseapp.BaseApp) {
 			ba.SetCMS(cms)
 		},
+		baseapp.SetChainID(mantlemintConfig.ChainID),
 	)
 
 	// create app...
