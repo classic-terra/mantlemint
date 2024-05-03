@@ -97,6 +97,14 @@ func (m *MantlemintRPCClient) SetLogger(logger tmlog.Logger) {
 	panic("implement me")
 }
 
+func (m *MantlemintRPCClient) Header(ctx context.Context, height *int64) (*coretypes.ResultHeader, error) {
+	panic("implement me")
+}
+
+func (m *MantlemintRPCClient) HeaderByHash(ctx context.Context, hash bytes.HexBytes) (*coretypes.ResultHeader, error) {
+	panic("implement me")
+}
+
 func (m *MantlemintRPCClient) BroadcastTxCommit(ctx context.Context, tx tendermint.Tx) (*coretypes.ResultBroadcastTxCommit, error) {
 	panic("implement me")
 }

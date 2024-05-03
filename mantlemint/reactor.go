@@ -118,16 +118,20 @@ func (mm *Instance) LoadInitialState() error {
 }
 
 func (mm *Instance) Inject(block *tendermint.Block) error {
-	currentState := mm.lastState
-	blockID := tendermint.BlockID{
-		Hash:          block.Hash(),
-		PartSetHeader: block.MakePartSet(tendermint.BlockPartSizeBytes).Header(),
-	}
-
 	// apply this block
 	var nextState state.State
 	var retainHeight int64
 	var err error
+
+	currentState := mm.lastState
+	partset, err := block.MakePartSet(tendermint.BlockPartSizeBytes)
+	if err != nil {
+		return err
+	}
+	blockID := tendermint.BlockID{
+		Hash:          block.Hash(),
+		PartSetHeader: partset.Header(),
+	}
 
 	// patch AppHash of lastState to the current block's last app hash
 	// because we still want to use fauxMerkleTree for speed (way faster this way!)
