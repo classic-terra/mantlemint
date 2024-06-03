@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/cometbft/cometbft/libs/log"
-	"github.com/cometbft/cometbft/mempool/mocks"
+	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/state"
 	"github.com/terra-money/mantlemint/db/wrapped"
@@ -29,7 +29,7 @@ func NewMantlemintExecutor(
 		conn,
 
 		// no mempool, as mantlemint doesn't handle tx broadcasts
-		&mocks.Mempool{},
+		&mempool.NopMempool{},
 
 		// no evidence pool, as mantlemint only receives evidence from other peers
 		state.EmptyEvidencePool{},
