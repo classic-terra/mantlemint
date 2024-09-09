@@ -3,8 +3,8 @@ module github.com/terra-money/mantlemint
 go 1.20
 
 require (
-	github.com/CosmWasm/wasmd v0.45.0
-	github.com/classic-terra/core/v3 v3.1.4
+	github.com/CosmWasm/wasmd v0.46.0
+	github.com/classic-terra/core/v3 v3.1.5
 	github.com/cometbft/cometbft v0.37.4
 	github.com/cometbft/cometbft-db v0.8.0
 	github.com/cosmos/cosmos-sdk v0.47.10
@@ -41,7 +41,7 @@ require (
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.2 // indirect
 	github.com/ChainSafe/go-schnorrkel v1.0.0 // indirect
-	github.com/CosmWasm/wasmvm v1.5.2 // indirect
+	github.com/CosmWasm/wasmvm v1.5.4 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/aws/aws-sdk-go v1.44.203 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -205,7 +205,7 @@ replace (
 )
 
 replace (
-	github.com/CosmWasm/wasmd => github.com/classic-terra/wasmd v0.45.0-terra.3
+	github.com/CosmWasm/wasmd => github.com/classic-terra/wasmd v0.46.0-classic.1
 	// use cometbft
 	github.com/cometbft/cometbft => github.com/classic-terra/cometbft v0.37.4-terra1
 	github.com/cometbft/cometbft-db => github.com/cometbft/cometbft-db v0.8.0
