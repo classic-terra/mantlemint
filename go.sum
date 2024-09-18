@@ -291,8 +291,8 @@ github.com/circonus-labs/circonus-gometrics v2.3.1+incompatible/go.mod h1:nmEj6D
 github.com/circonus-labs/circonusllhist v0.1.3/go.mod h1:kMXHVDlOchFAehlya5ePtbp5jckzBHf4XRpQvBOLI+I=
 github.com/classic-terra/cometbft v0.37.4-terra1 h1:eT5B2n5KKi5WVW+3ZNOVTmtfKKaZrXOLX9G80m9mhZo=
 github.com/classic-terra/cometbft v0.37.4-terra1/go.mod h1:vFqj7Qe3uFFJvHZleTJPQDmJ/WscXHi4rKWqiCAaNZk=
-github.com/classic-terra/core/v3 v3.1.5-sim.1 h1:1yx1xLbygVBZDlGeLdpIwISCieiUbxBHZq7DIDX3nEc=
-github.com/classic-terra/core/v3 v3.1.5-sim.1/go.mod h1:Gua/hAgu85Wt6z5oozP4lVhOzZLTG6wnneIs/IU/fgE=
+github.com/classic-terra/core/v3 v3.1.5-sim.2 h1:1EyhsF3W0zBOQzowk7fQQJNC1d5v0feIQ8zYTM8JL8I=
+github.com/classic-terra/core/v3 v3.1.5-sim.2/go.mod h1:Gua/hAgu85Wt6z5oozP4lVhOzZLTG6wnneIs/IU/fgE=
 github.com/classic-terra/cosmos-sdk v0.47.10-terra.1 h1:ek0vQ435fpeP3xGhszDO2yMIRy5XGMj9MCTlvpMUIkw=
 github.com/classic-terra/cosmos-sdk v0.47.10-terra.1/go.mod h1:4mBvTB8zevoeTuQufWwTcNnthGG2afXO+9D42BKzlRo=
 github.com/classic-terra/goleveldb v0.0.0-20230914223247-2b28f6655121 h1:fjpWDB0hm225wYg9vunyDyTH8ftd5xEUgINJKidj+Tw=
