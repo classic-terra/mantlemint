@@ -109,6 +109,7 @@ require (
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-safetemp v1.0.0 // indirect
 	github.com/hashicorp/go-version v1.6.0 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hdevalence/ed25519consensus v0.1.0 // indirect
 	github.com/huandu/skiplist v1.2.0 // indirect
@@ -120,7 +121,6 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
-	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/linxGnu/grocksdb v1.9.3 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/manifoldco/promptui v0.9.0 // indirect
@@ -208,9 +208,7 @@ replace (
 replace (
 	github.com/CosmWasm/wasmd => github.com/classic-terra/wasmd v0.46.0-classic.2
 	// use cometbft
-	github.com/cometbft/cometbft => github.com/classic-terra/cometbft v0.37.4-terra1
 	github.com/cometbft/cometbft-db => github.com/cometbft/cometbft-db v0.8.0
-	github.com/cosmos/cosmos-sdk => github.com/classic-terra/cosmos-sdk v0.47.10-terra.1
 	//github.com/cosmos/ledger-cosmos-go => github.com/terra-money/ledger-terra-go v0.11.2
 	// replace goleveldb to optimized one
 	github.com/syndtr/goleveldb => github.com/classic-terra/goleveldb v0.0.0-20230914223247-2b28f6655121
