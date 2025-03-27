@@ -4,10 +4,10 @@ go 1.22.12
 
 require (
 	github.com/CosmWasm/wasmd v0.46.0
-	github.com/classic-terra/core/v3 v3.4.0
+	github.com/classic-terra/core/v3 v3.4.3
 	github.com/cometbft/cometbft v0.37.15
 	github.com/cometbft/cometbft-db v0.11.0
-	github.com/cosmos/cosmos-sdk v0.47.14
+	github.com/cosmos/cosmos-sdk v0.47.17
 	github.com/cosmos/gogoproto v1.7.0
 	github.com/cosmos/iavl v0.20.1
 	//github.com/gogo/protobuf v1.3.3
@@ -33,14 +33,14 @@ require (
 	cosmossdk.io/depinject v1.0.0-alpha.4 // indirect
 	cosmossdk.io/errors v1.0.1 // indirect
 	cosmossdk.io/log v1.4.1 // indirect
-	cosmossdk.io/math v1.3.0 // indirect
+	cosmossdk.io/math v1.4.0 // indirect
 	cosmossdk.io/simapp v0.0.0-20230602123434-616841b9704d // indirect
 	cosmossdk.io/tools/rosetta v0.2.1 // indirect
 	filippo.io/edwards25519 v1.0.0 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.2 // indirect
 	github.com/ChainSafe/go-schnorrkel v1.1.0 // indirect
-	github.com/CosmWasm/wasmvm v1.5.8 // indirect
+	github.com/CosmWasm/wasmvm v1.5.9 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/aws/aws-sdk-go v1.44.224 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -60,8 +60,8 @@ require (
 	github.com/cosmos/cosmos-proto v1.0.0-beta.5 // indirect
 	github.com/cosmos/go-bip39 v1.0.0 // indirect
 	github.com/cosmos/gogogateway v1.2.0 // indirect
-	github.com/cosmos/ibc-apps/modules/ibc-hooks/v7 v7.0.0-20240321032823-2733d24a1b99 // indirect
-	github.com/cosmos/ibc-go/v7 v7.4.1 // indirect
+	github.com/cosmos/ibc-apps/modules/ibc-hooks/v7 v7.0.0-20250227205721-8a222c546f4f // indirect
+	github.com/cosmos/ibc-go/v7 v7.10.0 // indirect
 	github.com/cosmos/ics23/go v0.10.0 // indirect
 	github.com/cosmos/ledger-cosmos-go v0.12.4 // indirect
 	github.com/cosmos/rosetta-sdk-go v0.10.0 // indirect
