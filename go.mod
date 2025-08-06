@@ -4,7 +4,7 @@ go 1.22.12
 
 require (
 	github.com/CosmWasm/wasmd v0.46.0
-	github.com/classic-terra/core/v3 v3.4.3
+	github.com/classic-terra/core/v3 v3.5.0
 	github.com/cometbft/cometbft v0.37.15
 	github.com/cometbft/cometbft-db v0.11.0
 	github.com/cosmos/cosmos-sdk v0.47.17
