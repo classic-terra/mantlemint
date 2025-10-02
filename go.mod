@@ -4,7 +4,7 @@ go 1.22.12
 
 require (
 	github.com/CosmWasm/wasmd v0.46.0
-	github.com/classic-terra/core/v3 v3.5.1
+	github.com/classic-terra/core/v3 v3.6.0
 	github.com/cometbft/cometbft v0.37.15
 	github.com/cometbft/cometbft-db v0.11.0
 	github.com/cosmos/cosmos-sdk v0.47.17
@@ -206,7 +206,6 @@ replace (
 )
 
 replace (
-	github.com/CosmWasm/wasmd => github.com/classic-terra/wasmd v0.46.0-classic.2
 	// use cometbft
 	github.com/cometbft/cometbft-db => github.com/cometbft/cometbft-db v0.8.0
 	//github.com/cosmos/ledger-cosmos-go => github.com/terra-money/ledger-terra-go v0.11.2
