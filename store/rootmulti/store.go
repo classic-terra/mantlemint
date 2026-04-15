@@ -94,6 +94,7 @@ func NewStore(db cmtdb.DB, logger cmtlog.Logger, hldb *hld.HeightLimitedDB) *Sto
 		listeners:           make(map[types.StoreKey]*types.MemoryListener),
 		removalMap:          make(map[types.StoreKey]bool),
 		pruningManager:      pruning.NewManager(cosmosDB, sdklog.NewNopLogger()),
+		metrics:             metrics.NewNoOpMetrics(),
 	}
 }
 
