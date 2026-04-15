@@ -731,6 +731,9 @@ func (rs *Store) Query(req *types.RequestQuery) (*types.ResponseQuery, error) {
 	// trim the path and make the query
 	req.Path = subpath
 	res, err := queryable.Query(req)
+	if err != nil {
+		return res, err
+	}
 
 	if !req.Prove || !RequireProof(subpath) {
 		return res, err
