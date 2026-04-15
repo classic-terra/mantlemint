@@ -736,7 +736,7 @@ func (rs *Store) Query(req *types.RequestQuery) (*types.ResponseQuery, error) {
 	}
 
 	if !req.Prove || !RequireProof(subpath) {
-		return res, err
+		return res, nil
 	}
 
 	if res.ProofOps == nil || len(res.ProofOps.Ops) == 0 {
