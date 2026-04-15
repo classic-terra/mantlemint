@@ -153,3 +153,7 @@ func (d *Driver) Print() error {
 func (d *Driver) Stats() map[string]string {
 	return nil
 }
+
+func (d *Driver) Compact(start, end []byte) error {
+	return d.session.Compact(start, end)
+}

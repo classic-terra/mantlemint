@@ -10,8 +10,9 @@ import (
 
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	terra "github.com/classic-terra/core/v3/app"
-	core "github.com/classic-terra/core/v3/types"
+	terra "github.com/classic-terra/core/v4/app"
+	core "github.com/classic-terra/core/v4/types"
+	sdklog "cosmossdk.io/log"
 	tmlog "github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/proxy"
 	tendermint "github.com/cometbft/cometbft/types"
@@ -67,6 +68,14 @@ func main() {
 	batchedOrigin := batched.(safe_batch.SafeBatchDBCloser)
 	logger := tmlog.NewTMLogger(os.Stdout)
 	codec := terra.MakeEncodingConfig()
+	genesisDoc := getGenesisDoc(mantlemintConfig.GenesisPath)
+	initialHeight := genesisDoc.InitialHeight
+
+	// Open the initial batch before app construction. TerraApp writes default
+	// params during setup, and all writes in this stack must flow through the
+	// height-limited batch layer.
+	hldb.SetWriteHeight(initialHeight)
+	batchedOrigin.Open()
 
 	// customize CMS to limit kv store's read height on query
 	cms := rootmulti.NewStore(batched, logger, hldb)
@@ -75,8 +84,8 @@ func main() {
 
 	var wasmOpts []wasm.Option
 	app := terra.NewTerraApp(
-		logger,
-		batched,
+		sdklog.NewLogger(os.Stdout),
+		rootmulti.NewCosmosDBAdapter(batched),
 		nil,
 		true, // need this so KVStores are set
 		make(map[int64]bool),
@@ -92,7 +101,7 @@ func main() {
 	)
 
 	// create app...
-	appCreator := mantlemint.NewConcurrentQueryClientCreator(app)
+	appCreator := mantlemint.NewConcurrentQueryClientCreator(mantlemint.WrapLegacyABCIApplication(app))
 	appMetrics := proxy.NopMetrics()
 	appConns := proxy.NewAppConns(appCreator, appMetrics)
 	appConns.SetLogger(logger)
@@ -117,15 +126,6 @@ func main() {
 		// RunAfter Inject callback
 		nil,
 	)
-
-	// initialize using provided genesis
-	genesisDoc := getGenesisDoc(mantlemintConfig.GenesisPath)
-	initialHeight := genesisDoc.InitialHeight
-
-	// set target initial write height to genesis.initialHeight;
-	// this is safe as upon Inject it will be set with block.Height
-	hldb.SetWriteHeight(initialHeight)
-	batchedOrigin.Open()
 
 	// initialize state machine with genesis
 	if initErr := mm.Init(genesisDoc); initErr != nil {

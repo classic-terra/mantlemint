@@ -6,25 +6,23 @@ import (
 )
 
 type EventCollector struct {
-	Height             int64
-	Block              *tm.Block
-	ResponseBeginBlock *abci.ResponseBeginBlock
-	ResponseEndBlock   *abci.ResponseEndBlock
-	ResponseDeliverTxs []*abci.ResponseDeliverTx
+	Height                int64
+	Block                 *tm.Block
+	ResponseFinalizeBlock *abci.ResponseFinalizeBlock
+	TxResults             []*abci.ExecTxResult
 }
 
 func NewMantlemintEventCollector() *EventCollector {
 	return &EventCollector{}
 }
 
-// PublishEventNewBlock collects block, ResponseBeginBlock, ResponseEndBlock
+// PublishEventNewBlock collects block and FinalizeBlock results.
 func (ev *EventCollector) PublishEventNewBlock(
 	block tm.EventDataNewBlock,
 ) error {
 	ev.Height = block.Block.Height
 	ev.Block = block.Block
-	ev.ResponseBeginBlock = &block.ResultBeginBlock
-	ev.ResponseEndBlock = &block.ResultEndBlock
+	ev.ResponseFinalizeBlock = &block.ResultFinalizeBlock
 
 	return nil
 }
@@ -33,7 +31,14 @@ func (ev *EventCollector) PublishEventNewBlock(
 func (ev *EventCollector) PublishEventTx(
 	txEvent tm.EventDataTx,
 ) error {
-	ev.ResponseDeliverTxs = append(ev.ResponseDeliverTxs, &txEvent.Result)
+	ev.TxResults = append(ev.TxResults, &txEvent.Result)
+	return nil
+}
+
+// PublishEventNewBlockEvents is unused.
+func (ev *EventCollector) PublishEventNewBlockEvents(
+	_ tm.EventDataNewBlockEvents,
+) error {
 	return nil
 }
 
