@@ -1,23 +1,23 @@
 package rpc
 
 import (
+	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
 
-	terra "github.com/classic-terra/core/v3/app"
-	"github.com/classic-terra/core/v3/app/params"
-	tmlog "github.com/cometbft/cometbft/libs/log"
+	sdklog "cosmossdk.io/log"
+	terra "github.com/classic-terra/core/v4/app"
+	"github.com/classic-terra/core/v4/app/params"
 	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/server/api"
 	"github.com/cosmos/cosmos-sdk/server/config"
-	"github.com/cosmos/cosmos-sdk/server/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/gorilla/mux"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc"
 )
 
 func StartRPC(
@@ -33,7 +33,7 @@ func StartRPC(
 	cfg, _ := config.GetConfig(vp)
 
 	// create terra client; register all codecs
-	context := client.
+	clientCtx := client.
 		Context{}.
 		WithClient(rpcclient).
 		WithCodec(codec.Marshaler).
@@ -65,7 +65,7 @@ func StartRPC(
 	}()
 
 	// start new api server
-	apiSrv := api.New(context, tmlog.NewTMLogger(io.Discard))
+	apiSrv := api.New(clientCtx, sdklog.NewNopLogger(), grpc.NewServer())
 
 	// register custom routes to default api server
 	registerCustomRoutes(apiSrv.Router)
@@ -84,8 +84,9 @@ func StartRPC(
 
 	// register all default GET routers...
 	app.RegisterAPIRoutes(apiSrv, cfg.API)
-	app.RegisterTendermintService(context)
+	app.RegisterTendermintService(clientCtx)
 	errCh := make(chan error)
+	serverCtx := context.Background()
 
 	// caching middleware
 	apiSrv.Router.Use(func(next http.Handler) http.Handler {
@@ -111,7 +112,7 @@ func StartRPC(
 
 	// start api server in goroutine
 	go func() {
-		if err := apiSrv.Start(cfg); err != nil {
+		if err := apiSrv.Start(serverCtx, cfg); err != nil {
 			errCh <- err
 		}
 	}()
@@ -119,7 +120,7 @@ func StartRPC(
 	select {
 	case err := <-errCh:
 		return err
-	case <-time.After(types.ServerStartTime): // assume server started successfully
+	case <-time.After(100 * time.Millisecond): // assume server started successfully
 	}
 
 	return nil

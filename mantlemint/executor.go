@@ -7,6 +7,7 @@ import (
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/store"
 	"github.com/terra-money/mantlemint/db/wrapped"
 
 	dbm "github.com/cometbft/cometbft-db"
@@ -17,8 +18,10 @@ func NewMantlemintExecutor(
 	db dbm.DB,
 	conn proxy.AppConnConsensus,
 ) *state.BlockExecutor {
+	wdb := wrapped.NewWrappedDB(db)
+
 	return state.NewBlockExecutor(
-		state.NewStore(wrapped.NewWrappedDB(db), state.StoreOptions{
+		state.NewStore(wdb, state.StoreOptions{
 			DiscardABCIResponses: false,
 		}),
 
@@ -33,5 +36,7 @@ func NewMantlemintExecutor(
 
 		// no evidence pool, as mantlemint only receives evidence from other peers
 		state.EmptyEvidencePool{},
+
+		store.NewBlockStore(wdb),
 	)
 }

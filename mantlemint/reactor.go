@@ -120,7 +120,6 @@ func (mm *Instance) LoadInitialState() error {
 func (mm *Instance) Inject(block *tendermint.Block) error {
 	// apply this block
 	var nextState state.State
-	var retainHeight int64
 	var err error
 
 	currentState := mm.lastState
@@ -148,7 +147,7 @@ func (mm *Instance) Inject(block *tendermint.Block) error {
 	}
 
 	// process blocks
-	if nextState, retainHeight, err = mm.executor.ApplyBlock(currentState, blockID, block); err != nil {
+	if nextState, err = mm.executor.ApplyBlock(currentState, blockID, block); err != nil {
 		return err
 	}
 
@@ -157,7 +156,7 @@ func (mm *Instance) Inject(block *tendermint.Block) error {
 	// save cache of last state
 	mm.lastBlock = block
 	mm.lastState = nextState
-	mm.lastHeight = retainHeight
+	mm.lastHeight = nextState.LastBlockHeight
 
 	if runAfterErr := mm.safeRunAfter(block, mm.evc); runAfterErr != nil {
 		return runAfterErr

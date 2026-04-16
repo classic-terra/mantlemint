@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	terra "github.com/classic-terra/core/v3/app"
+	terra "github.com/classic-terra/core/v4/app"
 	dbm "github.com/cometbft/cometbft-db"
 	tmjson "github.com/cometbft/cometbft/libs/json"
 	tm "github.com/cometbft/cometbft/types"
@@ -38,7 +38,7 @@ var IndexTx = indexer.CreateIndexer(func(batch dbm.Batch, block *tm.Block, block
 		txJSON, _ := jsonEncoder(tx)
 
 		// handle response -> json
-		response := ToResponseDeliverTxJSON(evc.ResponseDeliverTxs[txIndex])
+		response := ToResponseDeliverTxJSON(evc.TxResults[txIndex])
 		responseJSON, responseMarshalErr := tmjson.Marshal(response)
 
 		if responseMarshalErr != nil {

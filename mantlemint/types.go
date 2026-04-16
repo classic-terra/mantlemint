@@ -17,7 +17,7 @@ type Mantlemint interface {
 }
 
 type Executor interface {
-	ApplyBlock(state.State, tendermint.BlockID, *tendermint.Block) (state.State, int64, error)
+	ApplyBlock(state.State, tendermint.BlockID, *tendermint.Block) (state.State, error)
 	SetEventBus(publisher tendermint.BlockEventPublisher)
 }
 

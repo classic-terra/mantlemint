@@ -114,3 +114,7 @@ func (s *SnappyDB) Print() error {
 func (s *SnappyDB) Stats() map[string]string {
 	return s.db.Stats()
 }
+
+func (s *SnappyDB) Compact(start, end []byte) error {
+	return s.db.Compact(start, end)
+}

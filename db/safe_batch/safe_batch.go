@@ -111,3 +111,7 @@ func (s *SafeBatchDB) Print() error {
 func (s *SafeBatchDB) Stats() map[string]string {
 	return s.db.Stats()
 }
+
+func (s *SafeBatchDB) Compact(start, end []byte) error {
+	return s.db.Compact(start, end)
+}

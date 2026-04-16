@@ -61,7 +61,7 @@ type EventAttribute struct {
 	Value string `json:"value,omitempty"`
 }
 
-func ToResponseDeliverTxJSON(responseDeliverTx *abci.ResponseDeliverTx) *ResponseDeliverTx {
+func ToResponseDeliverTxJSON(responseDeliverTx *abci.ExecTxResult) *ResponseDeliverTx {
 	result := &ResponseDeliverTx{}
 	result.Code = responseDeliverTx.Code
 	result.Data = responseDeliverTx.Data

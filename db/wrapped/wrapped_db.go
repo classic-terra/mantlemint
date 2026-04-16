@@ -70,3 +70,6 @@ func (wdb WrappedDB) Print() error { return wdb.db.Print() }
 
 // Stats returns a map of property values for all keys and the size of the cache.
 func (wdb WrappedDB) Stats() map[string]string { return wdb.db.Stats() }
+
+// Compact forwards explicit compaction to the wrapped database.
+func (wdb WrappedDB) Compact(start, end []byte) error { return wdb.db.Compact(start, end) }

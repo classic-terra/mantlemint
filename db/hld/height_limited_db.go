@@ -196,6 +196,10 @@ func (hld *HeightLimitedDB) Stats() map[string]string {
 	return hld.odb.Stats()
 }
 
+func (hld *HeightLimitedDB) Compact(start, end []byte) error {
+	return hld.odb.Compact(start, end)
+}
+
 func (hld *HeightLimitedDB) Debug(debugType int, key []byte, value []byte) {
 	if !hld.config.Debug {
 		return
