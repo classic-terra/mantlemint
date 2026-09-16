@@ -42,7 +42,13 @@ func setEntries(w entrySetter, mode int, height int64, key, value []byte) error 
 	buf = append(buf, byte(0)) // 0 => not deleted
 	buf = append(buf, value...)
 
-	if err := w.Set(prefixCurrentDataKey(key), buf[1:]); err != nil {
+	// batches copy on Set, so the caller's value can be written as-is;
+	// normalize nil so it is stored as empty like the flagged record
+	current := value
+	if current == nil {
+		current = []byte{}
+	}
+	if err := w.Set(prefixCurrentDataKey(key), current); err != nil {
 		return err
 	}
 	if err := w.Set(prefixKeysForIteratorKey(key), []byte{}); err != nil {

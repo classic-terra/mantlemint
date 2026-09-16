@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	storetypes "cosmossdk.io/store/types"
 	dbm "github.com/cometbft/cometbft-db"
 	gogotypes "github.com/cosmos/gogoproto/types"
 	"github.com/terra-money/mantlemint/db/heleveldb"
@@ -104,11 +105,11 @@ func Run(cfg Config) (*Report, error) {
 
 func importInto(cfg Config, target *Target, appState *AppStateSource, comet *CometSource) (*Report, error) {
 	height := appState.Height()
-	if err := target.Driver.SetImportState(heleveldb.ImportStateInProgress); err != nil {
+	if err := target.driver.SetImportState(heleveldb.ImportStateInProgress); err != nil {
 		return nil, err
 	}
 
-	stores, err := importStores(cfg, target.Driver, appState)
+	stores, err := importStores(cfg, target.driver, appState)
 	if err != nil {
 		return nil, err
 	}
@@ -140,10 +141,10 @@ func importInto(cfg Config, target *Target, appState *AppStateSource, comet *Com
 		}
 	}
 
-	if err := target.Driver.SetImportFloor(height); err != nil {
+	if err := target.driver.SetImportFloor(height); err != nil {
 		return nil, err
 	}
-	if err := target.Driver.SetImportState(heleveldb.ImportStateComplete); err != nil {
+	if err := target.driver.SetImportState(heleveldb.ImportStateComplete); err != nil {
 		return nil, err
 	}
 
@@ -250,7 +251,7 @@ func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource,
 // through the iterator key index, resolving each key's value at height.
 func verifyStore(driver *heleveldb.Driver, name string, height, expected int64) error {
 	start := []byte(fmt.Sprintf(storeKeyPrefix, name))
-	it, err := driver.Iterator(height, start, prefixEnd(start))
+	it, err := driver.Iterator(height, start, storetypes.PrefixEndBytes(start))
 	if err != nil {
 		return fmt.Errorf("store %q: verify: %w", name, err)
 	}
@@ -262,18 +263,6 @@ func verifyStore(driver *heleveldb.Driver, name string, height, expected int64) 
 	}
 	if count != expected {
 		return fmt.Errorf("store %q: wrote %d leaves but %d are readable at height %d", name, expected, count, height)
-	}
-	return nil
-}
-
-// prefixEnd returns the smallest key greater than every key with the given prefix.
-func prefixEnd(prefix []byte) []byte {
-	end := append([]byte{}, prefix...)
-	for i := len(end) - 1; i >= 0; i-- {
-		if end[i] < 0xff {
-			end[i]++
-			return end[:i+1]
-		}
 	}
 	return nil
 }

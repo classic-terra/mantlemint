@@ -21,7 +21,7 @@ func main() {
 	flag.StringVar(&cfg.MantlemintHome, "mantlemint-home", "", "mantlemint home to import into, as MANTLEMINT_HOME (required)")
 	flag.StringVar(&cfg.MantlemintDB, "mantlemint-db", "mantlemint", "mantlemint database name, as MANTLEMINT_DB")
 	flag.Int64Var(&cfg.Height, "height", 0, "height to import; 0 imports the latest committed version")
-	flag.IntVar(&cfg.Workers, "workers", 4, "number of stores imported concurrently")
+	flag.IntVar(&cfg.Workers, "workers", 4, "number of stores imported concurrently; each store is read by one worker, so the largest store bounds the import time")
 	flag.IntVar(&cfg.FlushBytes, "flush-bytes", heleveldb.DefaultBulkFlushBytes, "buffered bytes per store before writing to disk")
 	flag.BoolVar(&cfg.SkipWasm, "skip-wasm", false, "do not copy <app-home>/data/wasm")
 	flag.Parse()

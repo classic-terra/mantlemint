@@ -301,7 +301,7 @@ func TestVerifyStoreDetectsUnreadableEntries(t *testing.T) {
 	assert.Nil(t, err)
 	defer target.Close()
 
-	w, err := target.Driver.NewBulkWriter(10, 0)
+	w, err := target.driver.NewBulkWriter(10, 0)
 	assert.Nil(t, err)
 	for i := 0; i < 2; i++ {
 		assert.Nil(t, w.Set([]byte(fmt.Sprintf("s/k:bank/%d", i)), []byte("v")))
@@ -310,8 +310,8 @@ func TestVerifyStoreDetectsUnreadableEntries(t *testing.T) {
 	assert.Nil(t, w.Set([]byte("s/k:bank0/x"), []byte("v")))
 	assert.Nil(t, w.Close())
 
-	assert.Nil(t, verifyStore(target.Driver, "bank", 10, 2))
-	assert.ErrorContains(t, verifyStore(target.Driver, "bank", 10, 3), "wrote 3 leaves but 2 are readable")
+	assert.Nil(t, verifyStore(target.driver, "bank", 10, 2))
+	assert.ErrorContains(t, verifyStore(target.driver, "bank", 10, 3), "wrote 3 leaves but 2 are readable")
 }
 
 func TestRunWithConcurrentWorkersAndSmallFlushes(t *testing.T) {

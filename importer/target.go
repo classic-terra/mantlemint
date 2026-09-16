@@ -13,7 +13,7 @@ import (
 // Target is a mantlemint database assembled the same way sync.go assembles it:
 // heleveldb driver, height-limited DB, then a single safe batch.
 type Target struct {
-	Driver  *heleveldb.Driver
+	driver  *heleveldb.Driver
 	hldb    *hld.HeightLimitedDB
 	batched safe_batch.SafeBatchDBCloser
 }
@@ -44,7 +44,7 @@ func OpenTarget(dir, name string) (*Target, error) {
 
 	hldb := hld.ApplyHeightLimitedDB(driver, &hld.HeightLimitedDBConfig{Debug: false})
 	return &Target{
-		Driver:  driver,
+		driver:  driver,
 		hldb:    hldb,
 		batched: safe_batch.NewSafeBatchDB(hldb).(safe_batch.SafeBatchDBCloser),
 	}, nil
@@ -85,5 +85,5 @@ func (t *Target) WriteAt(height int64, fn func(db dbm.DB) error) error {
 }
 
 func (t *Target) Close() error {
-	return t.Driver.Close()
+	return t.driver.Close()
 }
