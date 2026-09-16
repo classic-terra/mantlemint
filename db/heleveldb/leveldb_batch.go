@@ -20,7 +20,35 @@ type LevelBatch struct {
 }
 
 func (b *LevelBatch) keyBytesWithHeight(key []byte) []byte {
-	return append(prefixDataWithHeightKey(key), serializeHeight(b.mode, b.height)...)
+	return keyBytesWithHeight(b.mode, b.height, key)
+}
+
+func keyBytesWithHeight(mode int, height int64, key []byte) []byte {
+	return append(prefixDataWithHeightKey(key), serializeHeight(mode, height)...)
+}
+
+type entrySetter interface {
+	Set(key, value []byte) error
+}
+
+// setEntries writes the three physical entries representing key=value at height:
+// the current value, the iterator key index, and the height-suffixed record.
+// Every write path must go through here so the layout cannot diverge.
+func setEntries(w entrySetter, mode int, height int64, key, value []byte) error {
+	newKey := keyBytesWithHeight(mode, height, key)
+
+	// make fixed size byte slice for performance
+	buf := make([]byte, 0, len(value)+1)
+	buf = append(buf, byte(0)) // 0 => not deleted
+	buf = append(buf, value...)
+
+	if err := w.Set(prefixCurrentDataKey(key), buf[1:]); err != nil {
+		return err
+	}
+	if err := w.Set(prefixKeysForIteratorKey(key), []byte{}); err != nil {
+		return err
+	}
+	return w.Set(newKey, buf)
 }
 
 func NewLevelDBBatch(atHeight int64, driver *Driver) *LevelBatch {
@@ -32,20 +60,7 @@ func NewLevelDBBatch(atHeight int64, driver *Driver) *LevelBatch {
 }
 
 func (b *LevelBatch) Set(key, value []byte) error {
-	newKey := b.keyBytesWithHeight(key)
-
-	// make fixed size byte slice for performance
-	buf := make([]byte, 0, len(value)+1)
-	buf = append(buf, byte(0)) // 0 => not deleted
-	buf = append(buf, value...)
-
-	if err := b.batch.Set(prefixCurrentDataKey(key), buf[1:]); err != nil {
-		return err
-	}
-	if err := b.batch.Set(prefixKeysForIteratorKey(key), []byte{}); err != nil {
-		return err
-	}
-	return b.batch.Set(newKey, buf)
+	return setEntries(b.batch, b.mode, b.height, key, value)
 }
 
 func (b *LevelBatch) Delete(key []byte) error {
