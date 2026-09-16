@@ -57,6 +57,16 @@ func main() {
 		panic(ldbErr)
 	}
 
+	// refuse to serve a database whose import never finished
+	if importState, importStateErr := ldb.ImportState(); importStateErr != nil {
+		panic(importStateErr)
+	} else if importState == heleveldb.ImportStateInProgress {
+		panic(fmt.Errorf("%s was not fully imported (import state: %s); delete it and re-run the importer",
+			mantlemintConfig.MantlemintDB, importState))
+	} else if importState == heleveldb.ImportStateComplete {
+		log.Printf("[sync] database was imported; state below height %d is unavailable", ldb.ImportFloor())
+	}
+
 	hldb := hld.ApplyHeightLimitedDB(
 		ldb,
 		&hld.HeightLimitedDBConfig{
