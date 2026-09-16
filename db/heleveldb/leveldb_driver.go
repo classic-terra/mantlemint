@@ -12,6 +12,7 @@ import (
 type Driver struct {
 	session *dbm.GoLevelDB
 	mode    int
+	floor   int64
 }
 
 func NewLevelDBDriver(config *DriverConfig) (*Driver, error) {
@@ -20,10 +21,15 @@ func NewLevelDBDriver(config *DriverConfig) (*Driver, error) {
 		return nil, err
 	}
 
-	return &Driver{
+	d := &Driver{
 		session: ldb,
 		mode:    config.Mode,
-	}, nil
+	}
+	if err := d.loadImportFloor(); err != nil {
+		ldb.Close()
+		return nil, err
+	}
+	return d, nil
 }
 
 func (d *Driver) newInnerIterator(requestHeight int64, pdb *dbm.PrefixDB) (dbm.Iterator, error) {
@@ -37,6 +43,9 @@ func (d *Driver) newInnerIterator(requestHeight int64, pdb *dbm.PrefixDB) (dbm.I
 }
 
 func (d *Driver) Get(maxHeight int64, key []byte) ([]byte, error) {
+	if err := d.checkFloor(maxHeight); err != nil {
+		return nil, err
+	}
 	if maxHeight == 0 {
 		return d.session.Get(prefixCurrentDataKey(key))
 	}
@@ -71,6 +80,9 @@ func (d *Driver) Get(maxHeight int64, key []byte) ([]byte, error) {
 }
 
 func (d *Driver) Has(maxHeight int64, key []byte) (bool, error) {
+	if err := d.checkFloor(maxHeight); err != nil {
+		return false, err
+	}
 	if maxHeight == 0 {
 		return d.session.Has(prefixCurrentDataKey(key))
 	}
@@ -121,6 +133,10 @@ func (d *Driver) DeleteSync(atHeight int64, key []byte) error {
 }
 
 func (d *Driver) Iterator(maxHeight int64, start, end []byte) (hld.HeightLimitEnabledIterator, error) {
+	// Iterator.Valid ignores driver errors, so the floor must be enforced here
+	if err := d.checkFloor(maxHeight); err != nil {
+		return nil, err
+	}
 	if maxHeight == 0 {
 		pdb := dbm.NewPrefixDB(d.session, cCurrentDataPrefix)
 		return pdb.Iterator(start, end)
@@ -129,6 +145,9 @@ func (d *Driver) Iterator(maxHeight int64, start, end []byte) (hld.HeightLimitEn
 }
 
 func (d *Driver) ReverseIterator(maxHeight int64, start, end []byte) (hld.HeightLimitEnabledIterator, error) {
+	if err := d.checkFloor(maxHeight); err != nil {
+		return nil, err
+	}
 	if maxHeight == 0 {
 		pdb := dbm.NewPrefixDB(d.session, cCurrentDataPrefix)
 		return pdb.ReverseIterator(start, end)
