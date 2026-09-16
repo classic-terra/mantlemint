@@ -104,7 +104,7 @@ mantlemint --x-crisis-skip-assert-invariants
 
 ### Bootstrapping from a terrad data directory
 
-Syncing from genesis takes weeks on columbus-5. `mantlemint-import` instead creates a mantlemint database from a stopped terrad node's data directory at a single height H. Mantlemint then starts at H and catches up through the usual `RPC_ENDPOINTS` / `WS_ENDPOINTS` block feed.
+Syncing from genesis takes weeks on columbus-5. `mantlemint import` instead creates a mantlemint database from a stopped terrad node's data directory at a single height H. Mantlemint then starts at H and catches up through the usual `RPC_ENDPOINTS` / `WS_ENDPOINTS` block feed.
 
 An imported node is **not an archival node**:
 
@@ -113,11 +113,7 @@ An imported node is **not an archival node**:
 
 It is meant for standing up a node near a height you care about, such as rehearsing a chain upgrade. It does not replace a genesis-synced node that serves historical queries.
 
-Build it with:
-
-```sh
-$ make build-import # results in build/mantlemint-import
-```
+The importer is part of the regular `mantlemint` binary. It does not need the environment variables or `app.toml` that starting a node needs.
 
 Prerequisites:
 
@@ -127,7 +123,7 @@ Prerequisites:
 - Expect the database to take roughly twice the size of the node's application state.
 
 ```sh
-mantlemint-import \
+mantlemint import \
   -app-home /path/to/terrad/home \
   -mantlemint-home /path/to/mantlemint/home \
   -mantlemint-db mantlemint
@@ -210,7 +206,7 @@ While you can, we do NOT recommend doing so. We only expose public node as a see
 
 ### Q2. Can I convert existing core's database to mantlemint?
 
-Mantlemint's db structure is NOT compatible with core's, so it cannot be used directly. You can import the state at a single height with `mantlemint-import`, but the result has no history below that height. See [Bootstrapping from a terrad data directory](#bootstrapping-from-a-terrad-data-directory).
+Mantlemint's db structure is NOT compatible with core's, so it cannot be used directly. You can import the state at a single height with `mantlemint import`, but the result has no history below that height. See [Bootstrapping from a terrad data directory](#bootstrapping-from-a-terrad-data-directory).
 
 ### Q3. Mantlemint doesn't support tendermint queries like /blocks, /txs, but I still need them. What should I do?
 
@@ -235,7 +231,7 @@ Also, try disabling crisis module's invariant check on genesis block creation, b
 
 ### Q7. Are snapshots provided?
 
-No. To avoid a genesis sync, import a terrad node's data directory with `mantlemint-import`. See [Bootstrapping from a terrad data directory](#bootstrapping-from-a-terrad-data-directory).
+No. To avoid a genesis sync, import a terrad node's data directory with `mantlemint import`. See [Bootstrapping from a terrad data directory](#bootstrapping-from-a-terrad-data-directory).
 
 ### Q8. Mantlemint becomes unresponsive when put under load
 

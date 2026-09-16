@@ -25,6 +25,7 @@ import (
 	"github.com/terra-money/mantlemint/db/heleveldb"
 	"github.com/terra-money/mantlemint/db/hld"
 	"github.com/terra-money/mantlemint/db/safe_batch"
+	"github.com/terra-money/mantlemint/importer"
 	"github.com/terra-money/mantlemint/indexer"
 	"github.com/terra-money/mantlemint/indexer/block"
 	"github.com/terra-money/mantlemint/indexer/tx"
@@ -37,6 +38,11 @@ import (
 
 // initialize mantlemint for v0.34.x
 func main() {
+	// subcommands run before config loading, which requires the node's env vars
+	if len(os.Args) > 1 && os.Args[1] == importer.CommandName {
+		os.Exit(importer.Main(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	mantlemintConfig := config.NewConfig()
 	mantlemintConfig.Print()
 

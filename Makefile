@@ -17,10 +17,6 @@ else
 	go build -mod=readonly $(BUILD_FLAGS) -o build/mantlemint ./sync.go
 endif
 
-# Offline importer that creates a mantlemint database from a terrad data directory.
-build-import: go.sum
-	go build -mod=readonly $(BUILD_FLAGS) -o build/mantlemint-import ./cmd/mantlemint-import
-
 lint:
 	golangci-lint run --out-format=tab
 
@@ -107,4 +103,4 @@ go.sum: go.mod
 clean:
 	rm -rf $(BUILDDIR)/
 
-.PHONY: build build-import build-static build-release build-release-amd64 build-release-arm64 install clean lint lint-fix lint-strict
+.PHONY: build build-static build-release build-release-amd64 build-release-arm64 install clean lint lint-fix lint-strict
