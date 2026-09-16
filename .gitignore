@@ -4,3 +4,4 @@
 build
 **/*.no-commit.*
 .env
+docs
