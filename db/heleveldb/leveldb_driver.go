@@ -16,7 +16,13 @@ type Driver struct {
 }
 
 func NewLevelDBDriver(config *DriverConfig) (*Driver, error) {
-	ldb, err := dbm.NewGoLevelDB(config.Name, config.Dir)
+	var ldb *dbm.GoLevelDB
+	var err error
+	if config.Options != nil {
+		ldb, err = dbm.NewGoLevelDBWithOpts(config.Name, config.Dir, config.Options)
+	} else {
+		ldb, err = dbm.NewGoLevelDB(config.Name, config.Dir)
+	}
 	if err != nil {
 		return nil, err
 	}

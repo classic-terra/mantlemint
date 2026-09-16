@@ -72,31 +72,52 @@ func (c *CometSource) ChainID() string {
 	return c.state.ChainID
 }
 
-// SeedInto writes the CometBFT state and block at height into target, so that
-// mantlemint resumes at height and validates block height+1.
-func (c *CometSource) SeedInto(target dbm.DB, height int64) (err error) {
-	defer recoverInto(&err, "seed CometBFT state")
+type seedData struct {
+	block *types.Block
+	parts *types.PartSet
+	seen  *types.Commit
+}
 
+// Validate checks that the source can seed height, without writing anything.
+func (c *CometSource) Validate(height int64) (err error) {
+	defer recoverInto(&err, "validate CometBFT state")
+	_, err = c.prepare(height)
+	return err
+}
+
+func (c *CometSource) prepare(height int64) (*seedData, error) {
 	if c.state.LastBlockHeight != height {
-		return fmt.Errorf("CometBFT state is at height %d but app state is at height %d; both sources must be at the same height",
+		return nil, fmt.Errorf("CometBFT state is at height %d but app state is at height %d; both sources must be at the same height",
 			c.state.LastBlockHeight, height)
 	}
 	if c.state.ConsensusParams.ABCI.VoteExtensionsEnabled(height) {
-		return fmt.Errorf("vote extensions are enabled at height %d; seeding the required extended commit is not supported", height)
+		return nil, fmt.Errorf("vote extensions are enabled at height %d; seeding the required extended commit is not supported", height)
 	}
 
 	block := c.blocks.LoadBlock(height)
 	meta := c.blocks.LoadBlockMeta(height)
 	seen := c.blocks.LoadSeenCommit(height)
 	if block == nil || meta == nil || seen == nil {
-		return fmt.Errorf("block %d or its seen commit is missing from blockstore.db", height)
+		return nil, fmt.Errorf("block %d or its seen commit is missing from blockstore.db", height)
 	}
 	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
 	if err != nil {
-		return fmt.Errorf("split block %d into parts: %w", height, err)
+		return nil, fmt.Errorf("split block %d into parts: %w", height, err)
 	}
 	if !parts.Header().Equals(meta.BlockID.PartSetHeader) {
-		return fmt.Errorf("block %d part set does not match its stored block ID", height)
+		return nil, fmt.Errorf("block %d part set does not match its stored block ID", height)
+	}
+	return &seedData{block: block, parts: parts, seen: seen}, nil
+}
+
+// SeedInto writes the CometBFT state and block at height into target, so that
+// mantlemint resumes at height and validates block height+1.
+func (c *CometSource) SeedInto(target dbm.DB, height int64) (err error) {
+	defer recoverInto(&err, "seed CometBFT state")
+
+	data, err := c.prepare(height)
+	if err != nil {
+		return err
 	}
 
 	st := c.state.Copy()
@@ -112,7 +133,7 @@ func (c *CometSource) SeedInto(target dbm.DB, height int64) (err error) {
 		return fmt.Errorf("bootstrap CometBFT state: %w", err)
 	}
 	// SaveBlock panics on failure; recovered above
-	store.NewBlockStore(target).SaveBlock(block, parts, seen)
+	store.NewBlockStore(target).SaveBlock(data.block, data.parts, data.seen)
 	return nil
 }
 

@@ -122,7 +122,10 @@ func (s *AppStateSource) StoreNames() []string {
 // IterateStore streams every leaf of a store at the import height in key order.
 // It returns the number of leaves visited and fails if that number differs
 // from the leaf count recorded in the tree root.
-func (s *AppStateSource) IterateStore(name string, fn func(key, value []byte) error) (int64, error) {
+func (s *AppStateSource) IterateStore(name string, fn func(key, value []byte) error) (count int64, err error) {
+	// iavl panics on some malformed nodes; report those like any other read failure
+	defer recoverInto(&err, fmt.Sprintf("store %q: read tree at height %d", name, s.height))
+
 	prefixed := dbm.NewPrefixDB(s.db, []byte(fmt.Sprintf(storeKeyPrefix, name)))
 	// skipFastStorageUpgrade must be true: otherwise loading may rewrite the
 	// whole fast-node index, which cannot work on a read-only database
@@ -140,7 +143,6 @@ func (s *AppStateSource) IterateStore(name string, fn func(key, value []byte) er
 	}
 
 	expected := itree.Size()
-	var count int64
 	if expected > 0 {
 		it, err := itree.Iterator(nil, nil, true)
 		if err != nil {

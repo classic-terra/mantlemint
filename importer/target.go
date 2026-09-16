@@ -5,10 +5,16 @@ import (
 	"os"
 
 	dbm "github.com/cometbft/cometbft-db"
+	"github.com/syndtr/goleveldb/leveldb/filter"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/terra-money/mantlemint/db/heleveldb"
 	"github.com/terra-money/mantlemint/db/hld"
 	"github.com/terra-money/mantlemint/db/safe_batch"
 )
+
+// targetWriteBuffer is the target memtable size. Bulk writer flushes must stay
+// below it; larger batches bypass the memtable and stall other writers.
+const targetWriteBuffer = 128 * 1024 * 1024
 
 // Target is a mantlemint database assembled the same way sync.go assembles it:
 // heleveldb driver, height-limited DB, then a single safe batch.
@@ -27,6 +33,11 @@ func OpenTarget(dir, name string) (*Target, error) {
 		Name: name,
 		Dir:  dir,
 		Mode: heleveldb.DriverModeKeySuffixDesc,
+		Options: &opt.Options{
+			WriteBuffer:            targetWriteBuffer,
+			Filter:                 filter.NewBloomFilter(10),
+			OpenFilesCacheCapacity: 1024,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open target %s.db in %s: %w", name, dir, err)

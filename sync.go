@@ -65,6 +65,8 @@ func main() {
 			mantlemintConfig.MantlemintDB, importState))
 	} else if importState == heleveldb.ImportStateComplete {
 		log.Printf("[sync] database was imported; state below height %d is unavailable", ldb.ImportFloor())
+	} else if importState != heleveldb.ImportStateNone {
+		panic(fmt.Errorf("%s has an unrecognized import state %s", mantlemintConfig.MantlemintDB, importState))
 	}
 
 	hldb := hld.ApplyHeightLimitedDB(

@@ -1,8 +1,12 @@
 package importer
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"io/fs"
 	"os"
@@ -82,10 +86,18 @@ func Run(cfg Config) (*Report, error) {
 	}
 	defer comet.Close()
 
+	// fail on anything checkable before the target is created; the store import can take hours
 	height := appState.Height()
-	if comet.Height() != height {
-		return nil, fmt.Errorf("CometBFT state is at height %d but app state is at height %d; both sources must be at the same height",
-			comet.Height(), height)
+	if err := comet.Validate(height); err != nil {
+		return nil, err
+	}
+	if cfg.FlushBytes > targetWriteBuffer/2 {
+		return nil, fmt.Errorf("flush bytes %d exceeds the maximum of %d", cfg.FlushBytes, targetWriteBuffer/2)
+	}
+	if !cfg.SkipWasm {
+		if _, err := checkWasmPaths(wasmSource(cfg), wasmDestination(cfg)); err != nil {
+			return nil, err
+		}
 	}
 	cfg.Logf("[import] height %d, chain id %s, %d stores", height, comet.ChainID(), len(appState.StoreNames()))
 
@@ -133,10 +145,8 @@ func importInto(cfg Config, target *Target, appState *AppStateSource, comet *Com
 	}
 
 	if !cfg.SkipWasm {
-		src := filepath.Join(cfg.AppHome, "data", "wasm")
-		dst := filepath.Join(cfg.MantlemintHome, "data", "wasm")
-		cfg.Logf("[import] copying %s to %s", src, dst)
-		if err := copyWasmDir(src, dst); err != nil {
+		cfg.Logf("[import] copying %s to %s", wasmSource(cfg), wasmDestination(cfg))
+		if err := copyWasmDir(wasmSource(cfg), wasmDestination(cfg)); err != nil {
 			return nil, err
 		}
 	}
@@ -215,12 +225,14 @@ func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource,
 	if err != nil {
 		return StoreReport{}, err
 	}
+	written := newLeafDigest()
 	leaves, err := appState.IterateStore(name, func(key, value []byte) error {
 		if failed.Load() {
 			return errAborted
 		}
 		full := make([]byte, 0, len(prefix)+len(key))
 		full = append(append(full, prefix...), key...)
+		written.add(full, value)
 		if err := w.Set(full, value); err != nil {
 			return fmt.Errorf("store %q: write: %w", name, err)
 		}
@@ -238,7 +250,7 @@ func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource,
 		return StoreReport{}, fmt.Errorf("store %q: flush: %w", name, closeErr)
 	}
 
-	if err := verifyStore(driver, name, height, leaves); err != nil {
+	if err := verifyStore(driver, name, height, written); err != nil {
 		return StoreReport{}, err
 	}
 
@@ -247,9 +259,10 @@ func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource,
 	return StoreReport{Name: name, Leaves: leaves, Duration: elapsed}, nil
 }
 
-// verifyStore counts the store's keys the way an explicit-height query sees them:
-// through the iterator key index, resolving each key's value at height.
-func verifyStore(driver *heleveldb.Driver, name string, height, expected int64) error {
+// verifyStore reads the store back the way an explicit-height query does, through
+// the iterator key index resolving each value at height, and requires the same
+// keys and values, in the same order, as were written.
+func verifyStore(driver *heleveldb.Driver, name string, height int64, written *leafDigest) error {
 	start := []byte(fmt.Sprintf(storeKeyPrefix, name))
 	it, err := driver.Iterator(height, start, storetypes.PrefixEndBytes(start))
 	if err != nil {
@@ -257,38 +270,89 @@ func verifyStore(driver *heleveldb.Driver, name string, height, expected int64) 
 	}
 	defer it.Close()
 
-	var count int64
+	read := newLeafDigest()
 	for ; it.Valid(); it.Next() {
-		count++
+		read.add(it.Key(), it.Value())
 	}
-	if count != expected {
-		return fmt.Errorf("store %q: wrote %d leaves but %d are readable at height %d", name, expected, count, height)
+	if read.count != written.count {
+		return fmt.Errorf("store %q: wrote %d leaves but %d are readable at height %d", name, written.count, read.count, height)
+	}
+	if !bytes.Equal(read.sum(), written.sum()) {
+		return fmt.Errorf("store %q: leaves readable at height %d differ from the leaves written", name, height)
 	}
 	return nil
 }
 
-// copyWasmDir copies the wasm code directory. A missing source is an error,
-// since contracts cannot run without their code; an existing destination is
-// refused so blobs from another chain are never mixed in.
-func copyWasmDir(src, dst string) error {
-	info, err := os.Stat(src)
+// leafDigest hashes an ordered sequence of key/value pairs.
+type leafDigest struct {
+	hash  hash.Hash
+	count int64
+	lens  [8]byte
+}
+
+func newLeafDigest() *leafDigest {
+	return &leafDigest{hash: sha256.New()}
+}
+
+func (d *leafDigest) add(key, value []byte) {
+	// length-prefix both parts so key/value boundaries cannot shift between entries
+	binary.BigEndian.PutUint32(d.lens[:4], uint32(len(key)))
+	binary.BigEndian.PutUint32(d.lens[4:], uint32(len(value)))
+	d.hash.Write(d.lens[:])
+	d.hash.Write(key)
+	d.hash.Write(value)
+	d.count++
+}
+
+func (d *leafDigest) sum() []byte {
+	return d.hash.Sum(nil)
+}
+
+func wasmSource(cfg Config) string {
+	return filepath.Join(cfg.AppHome, "data", "wasm")
+}
+
+func wasmDestination(cfg Config) string {
+	return filepath.Join(cfg.MantlemintHome, "data", "wasm")
+}
+
+// checkWasmPaths resolves the source wasm directory through symlinks and
+// requires the destination to be absent, so blobs from another chain are never
+// mixed in.
+func checkWasmPaths(src, dst string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(src)
 	if err != nil {
-		return fmt.Errorf("wasm directory: %w (use the skip-wasm option to import without it)", err)
+		return "", fmt.Errorf("wasm directory: %w (use the skip-wasm option to import without it)", err)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", fmt.Errorf("wasm directory: %w", err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("wasm path %s is not a directory", src)
+		return "", fmt.Errorf("wasm path %s is not a directory", src)
 	}
-	if _, err := os.Stat(dst); err == nil {
-		return fmt.Errorf("wasm destination %s already exists; remove it or use the skip-wasm option", dst)
+	if _, err := os.Lstat(dst); err == nil {
+		return "", fmt.Errorf("wasm destination %s already exists; remove it or use the skip-wasm option", dst)
 	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", err
+	}
+	return resolved, nil
+}
+
+// copyWasmDir copies the wasm code directory. A symlinked source root is
+// followed; symlinks inside it are refused, since recreating them would point
+// the copy back into the source node's files.
+func copyWasmDir(src, dst string) error {
+	resolved, err := checkWasmPaths(src, dst)
+	if err != nil {
 		return err
 	}
 
-	return filepath.WalkDir(src, func(path string, d fs.DirEntry, walkErr error) error {
+	return filepath.WalkDir(resolved, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		rel, err := filepath.Rel(src, path)
+		rel, err := filepath.Rel(resolved, path)
 		if err != nil {
 			return err
 		}
@@ -301,14 +365,10 @@ func copyWasmDir(src, dst string) error {
 		switch {
 		case d.IsDir():
 			return os.MkdirAll(out, info.Mode().Perm())
-		case info.Mode()&fs.ModeSymlink != 0:
-			link, err := os.Readlink(path)
-			if err != nil {
-				return err
-			}
-			return os.Symlink(link, out)
 		case info.Mode().IsRegular():
 			return copyFile(path, out, info.Mode().Perm())
+		case info.Mode()&fs.ModeSymlink != 0:
+			return fmt.Errorf("wasm directory contains symlink %s; copy it manually and use the skip-wasm option", path)
 		default:
 			return fmt.Errorf("wasm directory contains unsupported file %s", path)
 		}
@@ -327,6 +387,11 @@ func copyFile(src, dst string, perm fs.FileMode) error {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	// the complete marker is written after the copy; make the copy durable first
+	if err := out.Sync(); err != nil {
 		_ = out.Close()
 		return err
 	}

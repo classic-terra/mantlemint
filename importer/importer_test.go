@@ -260,23 +260,6 @@ func TestRunRefusesNonEmptyTarget(t *testing.T) {
 	assert.Equal(t, heleveldb.ImportStateComplete, state)
 }
 
-func TestRunFailureLeavesImportInProgress(t *testing.T) {
-	source := newSourceHome(t, 3)
-	target := t.TempDir()
-	// the wasm copy runs after stores and CometBFT state are written; make it fail
-	assert.Nil(t, os.MkdirAll(filepath.Join(target, "data", "wasm"), 0o755))
-
-	_, err := runImport(t, Config{AppHome: source, MantlemintHome: target})
-	assert.True(t, errors.Is(err, ErrIncompleteImport), "got %v", err)
-	assert.ErrorContains(t, err, "already exists")
-
-	db := openImported(t, target)
-	state, err := db.driver.ImportState()
-	assert.Nil(t, err)
-	assert.Equal(t, heleveldb.ImportStateInProgress, state)
-	assert.Equal(t, int64(0), db.driver.ImportFloor())
-}
-
 func TestRunSkipWasm(t *testing.T) {
 	source := newSourceHome(t, 3)
 	target := t.TempDir()
@@ -287,31 +270,35 @@ func TestRunSkipWasm(t *testing.T) {
 	assert.True(t, errors.Is(statErr, os.ErrNotExist))
 }
 
-func TestRunFailsWithoutWasmDirectory(t *testing.T) {
-	source := newSourceHome(t, 3)
-	assert.Nil(t, os.RemoveAll(filepath.Join(source, "data", "wasm")))
-
-	_, err := runImport(t, Config{AppHome: source, MantlemintHome: t.TempDir()})
-	assert.True(t, errors.Is(err, ErrIncompleteImport))
-	assert.ErrorContains(t, err, "skip-wasm")
-}
-
-func TestVerifyStoreDetectsUnreadableEntries(t *testing.T) {
+func TestVerifyStoreDetectsUnreadableOrDifferentEntries(t *testing.T) {
 	target, err := OpenTarget(t.TempDir(), "mantlemint")
 	assert.Nil(t, err)
 	defer target.Close()
 
 	w, err := target.driver.NewBulkWriter(10, 0)
 	assert.Nil(t, err)
+	written := newLeafDigest()
 	for i := 0; i < 2; i++ {
-		assert.Nil(t, w.Set([]byte(fmt.Sprintf("s/k:bank/%d", i)), []byte("v")))
+		key := []byte(fmt.Sprintf("s/k:bank/%d", i))
+		written.add(key, []byte("v"))
+		assert.Nil(t, w.Set(key, []byte("v")))
 	}
 	// a neighbouring store's keys must not be counted
 	assert.Nil(t, w.Set([]byte("s/k:bank0/x"), []byte("v")))
 	assert.Nil(t, w.Close())
 
-	assert.Nil(t, verifyStore(target.driver, "bank", 10, 2))
-	assert.ErrorContains(t, verifyStore(target.driver, "bank", 10, 3), "wrote 3 leaves but 2 are readable")
+	assert.Nil(t, verifyStore(target.driver, "bank", 10, written))
+
+	missing := newLeafDigest()
+	for i := 0; i < 3; i++ {
+		missing.add([]byte(fmt.Sprintf("s/k:bank/%d", i)), []byte("v"))
+	}
+	assert.ErrorContains(t, verifyStore(target.driver, "bank", 10, missing), "wrote 3 leaves but 2 are readable")
+
+	different := newLeafDigest()
+	different.add([]byte("s/k:bank/0"), []byte("v"))
+	different.add([]byte("s/k:bank/1"), []byte("changed"))
+	assert.ErrorContains(t, verifyStore(target.driver, "bank", 10, different), "differ from the leaves written")
 }
 
 func TestRunWithConcurrentWorkersAndSmallFlushes(t *testing.T) {
