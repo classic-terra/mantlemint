@@ -9,6 +9,8 @@ import (
 	"github.com/pkg/errors"
 
 	dbm "github.com/cometbft/cometbft-db"
+	tmjson "github.com/cometbft/cometbft/libs/json"
+	tm "github.com/cometbft/cometbft/types"
 	"github.com/gorilla/mux"
 	"github.com/terra-money/mantlemint/indexer"
 )
@@ -51,3 +53,20 @@ var RegisterRESTRoute = indexer.CreateRESTRoute(func(router *mux.Router, indexer
 		}
 	}).Methods("GET")
 })
+
+// LoadBlock returns the block indexed at height with its block ID, or a nil
+// block if that height was never indexed.
+func LoadBlock(indexerDB dbm.DB, height int64) (*tm.Block, *tm.BlockID, error) {
+	if height <= 0 {
+		return nil, nil, errors.New(ErrorInvalidHeight(strconv.FormatInt(height, 10)))
+	}
+	recordJSON, err := indexerDB.Get(getKey(uint64(height)))
+	if err != nil || recordJSON == nil {
+		return nil, nil, err
+	}
+	record := BlockRecord{}
+	if err := tmjson.Unmarshal(recordJSON, &record); err != nil {
+		return nil, nil, fmt.Errorf("decode indexed block %d: %w", height, err)
+	}
+	return record.Block, record.BlockID, nil
+}

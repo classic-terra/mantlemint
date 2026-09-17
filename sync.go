@@ -8,11 +8,11 @@ import (
 	"os"
 	"runtime/debug"
 
+	sdklog "cosmossdk.io/log"
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	terra "github.com/classic-terra/core/v4/app"
 	core "github.com/classic-terra/core/v4/types"
-	sdklog "cosmossdk.io/log"
 	tmlog "github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/proxy"
 	tendermint "github.com/cometbft/cometbft/types"
@@ -183,7 +183,8 @@ func main() {
 	indexerInstance.RegisterIndexerService("block", block.IndexBlock)
 
 	abcicli, _ := appCreator.NewABCIClient()
-	rpccli := rpc.NewRpcClient(abcicli)
+	chainData := rpc.NewSyncedChainData(indexerInstance.DB(), hldb, blockFeed.IsSynced, mm.GetCurrentHeight())
+	rpccli := rpc.NewRpcClient(abcicli, chainData)
 
 	// rest cache invalidate channel
 	cacheInvalidateChan := make(chan int64)
@@ -260,6 +261,7 @@ func main() {
 			}
 
 			hldb.ClearWriteHeight()
+			chainData.SetLatestHeight(feed.Block.Height)
 
 			cacheInvalidateChan <- feed.Block.Height
 		}

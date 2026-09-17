@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	abcicli "github.com/cometbft/cometbft/abci/client"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -17,12 +18,13 @@ var _ rpcclient.Client = (*MantlemintRPCClient)(nil)
 
 type MantlemintRPCClient struct {
 	client abcicli.Client
+	chain  ChainData
 }
 
 var errUnsupportedRPC = errors.New("rpc method is not supported by mantlemint's local ABCI client")
 
-func NewRpcClient(client abcicli.Client) rpcclient.Client {
-	return &MantlemintRPCClient{client: client}
+func NewRpcClient(client abcicli.Client, chain ChainData) rpcclient.Client {
+	return &MantlemintRPCClient{client: client, chain: chain}
 }
 
 func (m *MantlemintRPCClient) ABCIInfo(ctx context.Context) (*coretypes.ResultABCIInfo, error) {
@@ -168,8 +170,19 @@ func (m *MantlemintRPCClient) Health(ctx context.Context) (*coretypes.ResultHeal
 	return &coretypes.ResultHealth{}, nil
 }
 
-func (m *MantlemintRPCClient) Block(ctx context.Context, height *int64) (*coretypes.ResultBlock, error) {
-	return nil, errUnsupportedRPC
+func (m *MantlemintRPCClient) Block(ctx context.Context, heightPtr *int64) (*coretypes.ResultBlock, error) {
+	height, err := resolveHeight(m.chain.LatestHeight(), heightPtr)
+	if err != nil {
+		return nil, err
+	}
+	block, blockID, err := m.chain.Block(height)
+	if err != nil {
+		return nil, err
+	}
+	if block == nil {
+		return nil, fmt.Errorf("block at height %d is not available", height)
+	}
+	return &coretypes.ResultBlock{BlockID: *blockID, Block: block}, nil
 }
 
 func (m *MantlemintRPCClient) BlockByHash(ctx context.Context, hash []byte) (*coretypes.ResultBlock, error) {
@@ -184,8 +197,31 @@ func (m *MantlemintRPCClient) Commit(ctx context.Context, height *int64) (*coret
 	return nil, errUnsupportedRPC
 }
 
-func (m *MantlemintRPCClient) Validators(ctx context.Context, height *int64, page, perPage *int) (*coretypes.ResultValidators, error) {
-	return nil, errUnsupportedRPC
+func (m *MantlemintRPCClient) Validators(ctx context.Context, heightPtr *int64, pagePtr, perPagePtr *int) (*coretypes.ResultValidators, error) {
+	// as in CometBFT, a synced node's latest validator set is the next height's
+	latest := m.chain.LatestHeight()
+	if m.chain.IsSynced() {
+		latest++
+	}
+	height, err := resolveHeight(latest, heightPtr)
+	if err != nil {
+		return nil, err
+	}
+	validators, err := m.chain.Validators(height)
+	if err != nil {
+		return nil, err
+	}
+
+	total := len(validators.Validators)
+	perPage := validatePerPage(perPagePtr)
+	page, err := validatePage(pagePtr, perPage, total)
+	if err != nil {
+		return nil, err
+	}
+	skip := (page - 1) * perPage
+	v := validators.Validators[skip : skip+min(perPage, total-skip)]
+
+	return &coretypes.ResultValidators{BlockHeight: height, Validators: v, Count: len(v), Total: total}, nil
 }
 
 func (m *MantlemintRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*coretypes.ResultTx, error) {
@@ -200,8 +236,21 @@ func (m *MantlemintRPCClient) BlockSearch(ctx context.Context, query string, pag
 	return nil, errUnsupportedRPC
 }
 
+// Status reports sync information only; mantlemint is not a p2p node, so node
+// and validator info stay empty.
 func (m *MantlemintRPCClient) Status(ctx context.Context) (*coretypes.ResultStatus, error) {
-	return nil, errUnsupportedRPC
+	height := m.chain.LatestHeight()
+	syncInfo := coretypes.SyncInfo{LatestBlockHeight: height, CatchingUp: !m.chain.IsSynced()}
+	block, _, err := m.chain.Block(height)
+	if err != nil {
+		return nil, err
+	}
+	if block != nil {
+		syncInfo.LatestBlockHash = block.Hash()
+		syncInfo.LatestAppHash = block.AppHash
+		syncInfo.LatestBlockTime = block.Time
+	}
+	return &coretypes.ResultStatus{SyncInfo: syncInfo}, nil
 }
 
 func (m *MantlemintRPCClient) BroadcastEvidence(ctx context.Context, evidence tendermint.Evidence) (*coretypes.ResultBroadcastEvidence, error) {
@@ -214,6 +263,44 @@ func (m *MantlemintRPCClient) UnconfirmedTxs(ctx context.Context, limit *int) (*
 
 func (m *MantlemintRPCClient) NumUnconfirmedTxs(ctx context.Context) (*coretypes.ResultUnconfirmedTxs, error) {
 	return nil, errUnsupportedRPC
+}
+
+// The helpers below follow CometBFT's rpc/core so results match a full node.
+const (
+	defaultPerPage = 30
+	maxPerPage     = 100
+)
+
+func resolveHeight(latest int64, heightPtr *int64) (int64, error) {
+	if heightPtr == nil {
+		return latest, nil
+	}
+	height := *heightPtr
+	if height <= 0 {
+		return 0, fmt.Errorf("height must be greater than 0, but got %d", height)
+	}
+	if height > latest {
+		return 0, fmt.Errorf("height %d must be less than or equal to the current blockchain height %d", height, latest)
+	}
+	return height, nil
+}
+
+func validatePerPage(perPagePtr *int) int {
+	if perPagePtr == nil || *perPagePtr < 1 {
+		return defaultPerPage
+	}
+	return min(*perPagePtr, maxPerPage)
+}
+
+func validatePage(pagePtr *int, perPage, total int) (int, error) {
+	if pagePtr == nil {
+		return 1, nil
+	}
+	pages := max((total-1)/perPage+1, 1)
+	if page := *pagePtr; page <= 0 || page > pages {
+		return 1, fmt.Errorf("page should be within [1, %d] range, given %d", pages, page)
+	}
+	return *pagePtr, nil
 }
 
 func (m *MantlemintRPCClient) CheckTx(ctx context.Context, tx tendermint.Tx) (*coretypes.ResultCheckTx, error) {

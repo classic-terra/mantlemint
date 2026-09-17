@@ -85,30 +85,12 @@ func StartRPC(
 	// register all default GET routers...
 	app.RegisterAPIRoutes(apiSrv, cfg.API)
 	app.RegisterTendermintService(clientCtx)
+	// the tx gateway routes above query this service; without it they fail with unknown query path
+	app.RegisterTxService(clientCtx)
 	errCh := make(chan error)
 	serverCtx := context.Background()
 
-	// caching middleware
-	apiSrv.Router.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			if request.URL.Path == "/health" {
-				next.ServeHTTP(writer, request)
-				return
-			}
-
-			heightQuery := request.URL.Query().Get("height")
-			height, err := strconv.ParseInt(heightQuery, 10, 64)
-
-			// don't use archival cache if height is 0 or error
-			if err == nil && height > 0 {
-				// GRPC query parses height from header
-				request.Header.Add("x-cosmos-block-height", heightQuery)
-				archivalCache.HandleCachedHTTP(writer, request, next)
-			} else {
-				cache.HandleCachedHTTP(writer, request, next)
-			}
-		})
-	})
+	apiSrv.Router.Use(cacheMiddleware(cache, archivalCache))
 
 	// start api server in goroutine
 	go func() {
@@ -124,4 +106,31 @@ func StartRPC(
 	}
 
 	return nil
+}
+
+// cacheMiddleware serves GET responses from the latest cache, or from the
+// archival cache when a height is given. Other methods, such as tx simulate,
+// carry their input in the body, which the URL-keyed caches cannot tell apart,
+// so they always reach the handler.
+func cacheMiddleware(cache, archivalCache *CacheBackend) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			heightQuery := request.URL.Query().Get("height")
+			height, err := strconv.ParseInt(heightQuery, 10, 64)
+			hasHeight := err == nil && height > 0
+			if hasHeight {
+				// GRPC query parses height from header
+				request.Header.Add("x-cosmos-block-height", heightQuery)
+			}
+
+			switch {
+			case request.URL.Path == "/health" || request.Method != http.MethodGet:
+				next.ServeHTTP(writer, request)
+			case hasHeight:
+				archivalCache.HandleCachedHTTP(writer, request, next)
+			default:
+				cache.HandleCachedHTTP(writer, request, next)
+			}
+		})
+	}
 }
