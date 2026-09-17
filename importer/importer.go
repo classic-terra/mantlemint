@@ -41,6 +41,11 @@ type Config struct {
 	FlushBytes int
 	SkipWasm   bool
 	Logf       func(format string, args ...any)
+	// Progress, if set, receives a snapshot of every store about once per
+	// ProgressInterval while stores are imported, and replaces the per-store
+	// log lines.
+	Progress         func([]StoreProgress)
+	ProgressInterval time.Duration
 }
 
 type StoreReport struct {
@@ -165,6 +170,23 @@ func importInto(cfg Config, target *Target, appState *AppStateSource, comet *Com
 // the driver at the import height to prove the written entries are servable.
 func importStores(cfg Config, driver *heleveldb.Driver, appState *AppStateSource) ([]StoreReport, error) {
 	names := appState.StoreNames()
+	// reading every root first costs seconds and gives the overall progress a fixed total
+	totals := make([]int64, len(names))
+	for i, name := range names {
+		size, err := appState.StoreSize(name)
+		if err != nil {
+			return nil, err
+		}
+		totals[i] = size
+	}
+	tracker := newProgressTracker(names, totals)
+	if cfg.Progress != nil {
+		if cfg.ProgressInterval <= 0 {
+			cfg.ProgressInterval = time.Second
+		}
+		stop := tracker.report(cfg.Progress, cfg.ProgressInterval)
+		defer stop()
+	}
 	jobs := make(chan string)
 	results := make(chan StoreReport, len(names))
 
@@ -187,7 +209,7 @@ func importStores(cfg Config, driver *heleveldb.Driver, appState *AppStateSource
 				if failed.Load() {
 					continue
 				}
-				report, err := importStore(cfg, driver, appState, name, &failed)
+				report, err := importStore(cfg, driver, appState, tracker, name, &failed)
 				if err != nil {
 					fail(err)
 					continue
@@ -214,9 +236,21 @@ func importStores(cfg Config, driver *heleveldb.Driver, appState *AppStateSource
 	return reports, nil
 }
 
+// formatProgress reports done of total leaves with the average rate so far and
+// the remaining time that rate implies.
+func formatProgress(done, total int64, elapsed time.Duration) string {
+	rate := float64(done) / elapsed.Seconds()
+	if total <= 0 || done > total {
+		return fmt.Sprintf("%d leaves, %.0f leaves/s", done, rate)
+	}
+	eta := time.Duration(float64(total-done) / rate * float64(time.Second))
+	return fmt.Sprintf("%d/%d leaves (%.1f%%), %.0f leaves/s, ~%s left",
+		done, total, 100*float64(done)/float64(total), rate, eta.Round(time.Second))
+}
+
 var errAborted = errors.New("aborted after another store failed")
 
-func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource, name string, failed *atomic.Bool) (StoreReport, error) {
+func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource, tracker *progressTracker, name string, failed *atomic.Bool) (StoreReport, error) {
 	height := appState.Height()
 	start := time.Now()
 	prefix := []byte(fmt.Sprintf(storeKeyPrefix, name))
@@ -226,6 +260,15 @@ func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource,
 		return StoreReport{}, err
 	}
 	written := newLeafDigest()
+	// the live display replaces per-store log lines
+	logStore := cfg.Logf
+	if cfg.Progress != nil {
+		logStore = func(string, ...any) {}
+	}
+	total := tracker.started(name)
+	if total >= progressEvery {
+		logStore("[import] %s: %d leaves to import", name, total)
+	}
 	leaves, err := appState.IterateStore(name, func(key, value []byte) error {
 		if failed.Load() {
 			return errAborted
@@ -236,9 +279,10 @@ func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource,
 		if err := w.Set(full, value); err != nil {
 			return fmt.Errorf("store %q: write: %w", name, err)
 		}
-		if n := w.Count(); n%progressEvery == 0 {
-			elapsed := time.Since(start)
-			cfg.Logf("[import] %s: %d leaves, %.0f leaves/s", name, n, float64(n)/elapsed.Seconds())
+		n := w.Count()
+		tracker.wrote(name, n)
+		if n%progressEvery == 0 {
+			logStore("[import] %s: %s", name, formatProgress(n, total, time.Since(start)))
 		}
 		return nil
 	})
@@ -250,12 +294,14 @@ func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource,
 		return StoreReport{}, fmt.Errorf("store %q: flush: %w", name, closeErr)
 	}
 
+	tracker.verifying(name)
 	if err := verifyStore(driver, name, height, written); err != nil {
 		return StoreReport{}, err
 	}
+	tracker.finished(name)
 
 	elapsed := time.Since(start)
-	cfg.Logf("[import] %s: done, %d leaves in %s", name, leaves, elapsed.Round(time.Millisecond))
+	logStore("[import] %s: done, %d leaves in %s", name, leaves, elapsed.Round(time.Millisecond))
 	return StoreReport{Name: name, Leaves: leaves, Duration: elapsed}, nil
 }
 

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	storetypes "cosmossdk.io/store/types"
 	cmtlog "github.com/cometbft/cometbft/libs/log"
@@ -316,10 +318,40 @@ func TestRunWithConcurrentWorkersAndSmallFlushes(t *testing.T) {
 	buildAppDB(t, data, stores, [][]fixtureOp{ops})
 	buildCometDB(t, data, "rehearsal-1", 1)
 
-	report, err := runImport(t, Config{AppHome: home, MantlemintHome: t.TempDir(), Workers: 4, FlushBytes: 256, SkipWasm: true})
+	var (
+		mu   sync.Mutex
+		last []StoreProgress
+	)
+	report, err := runImport(t, Config{
+		AppHome: home, MantlemintHome: t.TempDir(), Workers: 4, FlushBytes: 256, SkipWasm: true,
+		Progress: func(p []StoreProgress) {
+			mu.Lock()
+			defer mu.Unlock()
+			last = p
+		},
+		ProgressInterval: time.Millisecond,
+	})
 	assert.Nil(t, err)
 	assert.Len(t, report.Stores, len(stores))
 	for _, s := range report.Stores {
 		assert.Equal(t, int64(300), s.Leaves, s.Name)
 	}
+
+	// the final snapshot, delivered before Run returns, shows every store complete
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Len(t, last, len(stores))
+	for i, p := range last {
+		assert.Equal(t, stores[i], p.Name)
+		assert.Equal(t, StoreDone, p.Phase, p.Name)
+		assert.Equal(t, int64(300), p.Total, p.Name)
+		assert.Equal(t, int64(300), p.Done, p.Name)
+	}
+}
+
+func TestFormatProgress(t *testing.T) {
+	assert.Equal(t, "3000000/12000000 leaves (25.0%), 5000 leaves/s, ~30m0s left",
+		formatProgress(3_000_000, 12_000_000, 600*time.Second))
+	// without a usable total, only the count and rate are known
+	assert.Equal(t, "2000000 leaves, 1000 leaves/s", formatProgress(2_000_000, 0, 2000*time.Second))
 }

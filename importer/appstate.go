@@ -126,22 +126,10 @@ func (s *AppStateSource) IterateStore(name string, fn func(key, value []byte) er
 	// iavl panics on some malformed nodes; report those like any other read failure
 	defer recoverInto(&err, fmt.Sprintf("store %q: read tree at height %d", name, s.height))
 
-	prefixed := dbm.NewPrefixDB(s.db, []byte(fmt.Sprintf(storeKeyPrefix, name)))
-	// skipFastStorageUpgrade must be true: otherwise loading may rewrite the
-	// whole fast-node index, which cannot work on a read-only database
-	tree := iavl.NewMutableTree(idb.NewWrapper(prefixed), iavlNodeCacheSize, true, iavl.NewNopLogger())
-
-	if !tree.VersionExists(s.height) {
-		return 0, fmt.Errorf("store %q: version %d is not available (pruned or never written)", name, s.height)
-	}
-	itree, err := tree.GetImmutable(s.height)
+	itree, err := s.openTree(name)
 	if err != nil {
-		if errors.Is(err, iavl.ErrVersionDoesNotExist) {
-			return 0, fmt.Errorf("store %q: version %d is not available (pruned or never written): %w", name, s.height, err)
-		}
-		return 0, fmt.Errorf("store %q: load version %d: %w", name, s.height, err)
+		return 0, err
 	}
-
 	expected := itree.Size()
 	if expected > 0 {
 		it, err := itree.Iterator(nil, nil, true)
@@ -168,6 +156,37 @@ func (s *AppStateSource) IterateStore(name string, fn func(key, value []byte) er
 		return count, fmt.Errorf("store %q: visited %d leaves at height %d but the tree records %d", name, count, s.height, expected)
 	}
 	return count, nil
+}
+
+// StoreSize returns the leaf count recorded in a store's tree root at the
+// import height, without visiting the leaves.
+func (s *AppStateSource) StoreSize(name string) (size int64, err error) {
+	defer recoverInto(&err, fmt.Sprintf("store %q: read tree at height %d", name, s.height))
+
+	itree, err := s.openTree(name)
+	if err != nil {
+		return 0, err
+	}
+	return itree.Size(), nil
+}
+
+func (s *AppStateSource) openTree(name string) (*iavl.ImmutableTree, error) {
+	prefixed := dbm.NewPrefixDB(s.db, []byte(fmt.Sprintf(storeKeyPrefix, name)))
+	// skipFastStorageUpgrade must be true: otherwise loading may rewrite the
+	// whole fast-node index, which cannot work on a read-only database
+	tree := iavl.NewMutableTree(idb.NewWrapper(prefixed), iavlNodeCacheSize, true, iavl.NewNopLogger())
+
+	if !tree.VersionExists(s.height) {
+		return nil, fmt.Errorf("store %q: version %d is not available (pruned or never written)", name, s.height)
+	}
+	itree, err := tree.GetImmutable(s.height)
+	if err != nil {
+		if errors.Is(err, iavl.ErrVersionDoesNotExist) {
+			return nil, fmt.Errorf("store %q: version %d is not available (pruned or never written): %w", name, s.height, err)
+		}
+		return nil, fmt.Errorf("store %q: load version %d: %w", name, s.height, err)
+	}
+	return itree, nil
 }
 
 func (s *AppStateSource) Close() error {

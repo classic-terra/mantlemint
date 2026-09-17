@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"text/tabwriter"
 	"time"
 
 	"github.com/terra-money/mantlemint/db/heleveldb"
+	"golang.org/x/term"
 )
 
 // CommandName is the mantlemint subcommand that runs an import.
@@ -58,6 +60,16 @@ func Main(args []string, stdout, stderr io.Writer) int {
 
 	logger := log.New(stderr, "", log.LstdFlags)
 	cfg.Logf = logger.Printf
+	if f, ok := stderr.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		rows := func() int {
+			_, height, err := term.GetSize(int(f.Fd()))
+			if err != nil {
+				return 0
+			}
+			return height
+		}
+		cfg.Progress = NewLiveProgress(stderr, rows).Render
+	}
 
 	report, err := Run(cfg)
 	if err != nil {
