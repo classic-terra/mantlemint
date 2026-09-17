@@ -102,6 +102,50 @@ mantlemint
 mantlemint --x-crisis-skip-assert-invariants 
 ```
 
+### Bootstrapping from a terrad data directory
+
+Syncing from genesis takes weeks on columbus-5. `mantlemint import` instead creates a mantlemint database from a stopped terrad node's data directory at a single height H. Mantlemint then starts at H and catches up through the usual `RPC_ENDPOINTS` / `WS_ENDPOINTS` block feed.
+
+An imported node is **not an archival node**:
+
+- Queries at an explicit `?height=` below H return an error. There is no state below H.
+- The tx and block indexes (`/index/tx/...`) are empty below H, and they stay empty: syncing forward never backfills them.
+
+It is meant for standing up a node near a height you care about, such as rehearsing a chain upgrade. It does not replace a genesis-synced node that serves historical queries.
+
+The importer is part of the regular `mantlemint` binary. It does not need the environment variables or `app.toml` that starting a node needs.
+
+Prerequisites:
+
+- **Stop terrad first.** The importer opens the node's databases read-only and fails if the node still holds them.
+- The node must use the `goleveldb` backend, and H must still be retained by its pruning settings. The default imports the latest committed height, which is always retained.
+- Import into a fresh `MANTLEMINT_HOME`. The importer refuses a database that already holds data, and a `data/wasm` directory that already exists.
+- Expect the database to take roughly twice the size of the node's application state.
+
+```sh
+mantlemint import \
+  -app-home /path/to/terrad/home \
+  -mantlemint-home /path/to/mantlemint/home \
+  -mantlemint-db mantlemint
+```
+
+| Flag | Meaning |
+|---|---|
+| `-app-home` | terrad home whose `data/application.db` supplies module state. Its `data/wasm` directory is copied too. |
+| `-comet-home` | Home of the node that will produce blocks after the import. Defaults to `-app-home`. |
+| `-mantlemint-home`, `-mantlemint-db` | Must match `MANTLEMINT_HOME` and `MANTLEMINT_DB` when you start mantlemint. |
+| `-height` | Height to import. `0` (default) imports the latest committed version. |
+| `-workers` | Stores imported concurrently. |
+| `-skip-wasm` | Do not copy `data/wasm`. Contracts cannot run without it. |
+
+The CometBFT state at H decides which blocks mantlemint accepts next: their chain ID, validator set and commit signatures are all checked against it. If blocks will come from a different node than the one supplying app state, for example a node transformed into a single-validator testnet, pass that node's home as `-comet-home`. The CometBFT state and the app state must be at the same height.
+
+When the import finishes, it prints each store's leaf count and the chain ID. Start mantlemint as usual, with `CHAIN_ID` set to that chain ID. `GENESIS_PATH` is still required, but genesis is not run.
+
+If the import fails after it has started writing, the database is marked incomplete and mantlemint refuses to start on it. Delete the database directory and `data/wasm` under `MANTLEMINT_HOME`, then run the import again.
+
+A freshly imported node can become unresponsive under load while it builds its contract cache. See [Q8](#q8-mantlemint-becomes-unresponsive-when-put-under-load).
+
 ### Adjusting smart contract memory cache size
 
 The `wasm` section in `config.toml` may play a critical role in how mantlemint performs under heavy load. We recommend adjusting `contract-memory-cache-size` if you are planning to run mantlemint publicly, as loading contract instances from disk is an expensive operation.
@@ -162,7 +206,7 @@ While you can, we do NOT recommend doing so. We only expose public node as a see
 
 ### Q2. Can I convert existing core's database to mantlemint?
 
-No. Mantlemint's db structure is NOT compatible with core's. 
+Mantlemint's db structure is NOT compatible with core's, so it cannot be used directly. You can import the state at a single height with `mantlemint import`, but the result has no history below that height. See [Bootstrapping from a terrad data directory](#bootstrapping-from-a-terrad-data-directory).
 
 ### Q3. Mantlemint doesn't support tendermint queries like /blocks, /txs, but I still need them. What should I do?
 
@@ -187,7 +231,7 @@ Also, try disabling crisis module's invariant check on genesis block creation, b
 
 ### Q7. Are snapshots provided?
 
-Not yet, but we have plans to do so.
+No. To avoid a genesis sync, import a terrad node's data directory with `mantlemint import`. See [Bootstrapping from a terrad data directory](#bootstrapping-from-a-terrad-data-directory).
 
 ### Q8. Mantlemint becomes unresponsive when put under load
 

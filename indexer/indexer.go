@@ -32,6 +32,11 @@ func NewIndexer(dbName, path string) (*Indexer, error) {
 	}, nil
 }
 
+// DB returns the database the indexers write to.
+func (idx *Indexer) DB() dbm.DB {
+	return idx.db
+}
+
 func (idx *Indexer) RegisterIndexerService(tag string, indexerFunc IndexFunc) {
 	idx.indexerTags = append(idx.indexerTags, tag)
 	idx.indexers = append(idx.indexers, indexerFunc)

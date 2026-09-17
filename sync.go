@@ -8,11 +8,11 @@ import (
 	"os"
 	"runtime/debug"
 
+	sdklog "cosmossdk.io/log"
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	terra "github.com/classic-terra/core/v4/app"
 	core "github.com/classic-terra/core/v4/types"
-	sdklog "cosmossdk.io/log"
 	tmlog "github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/proxy"
 	tendermint "github.com/cometbft/cometbft/types"
@@ -25,6 +25,7 @@ import (
 	"github.com/terra-money/mantlemint/db/heleveldb"
 	"github.com/terra-money/mantlemint/db/hld"
 	"github.com/terra-money/mantlemint/db/safe_batch"
+	"github.com/terra-money/mantlemint/importer"
 	"github.com/terra-money/mantlemint/indexer"
 	"github.com/terra-money/mantlemint/indexer/block"
 	"github.com/terra-money/mantlemint/indexer/tx"
@@ -37,6 +38,11 @@ import (
 
 // initialize mantlemint for v0.34.x
 func main() {
+	// subcommands run before config loading, which requires the node's env vars
+	if len(os.Args) > 1 && os.Args[1] == importer.CommandName {
+		os.Exit(importer.Main(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	mantlemintConfig := config.NewConfig()
 	mantlemintConfig.Print()
 
@@ -55,6 +61,18 @@ func main() {
 	})
 	if ldbErr != nil {
 		panic(ldbErr)
+	}
+
+	// refuse to serve a database whose import never finished
+	if importState, importStateErr := ldb.ImportState(); importStateErr != nil {
+		panic(importStateErr)
+	} else if importState == heleveldb.ImportStateInProgress {
+		panic(fmt.Errorf("%s was not fully imported (import state: %s); delete it and re-run the importer",
+			mantlemintConfig.MantlemintDB, importState))
+	} else if importState == heleveldb.ImportStateComplete {
+		log.Printf("[sync] database was imported; state below height %d is unavailable", ldb.ImportFloor())
+	} else if importState != heleveldb.ImportStateNone {
+		panic(fmt.Errorf("%s has an unrecognized import state %s", mantlemintConfig.MantlemintDB, importState))
 	}
 
 	hldb := hld.ApplyHeightLimitedDB(
@@ -165,7 +183,8 @@ func main() {
 	indexerInstance.RegisterIndexerService("block", block.IndexBlock)
 
 	abcicli, _ := appCreator.NewABCIClient()
-	rpccli := rpc.NewRpcClient(abcicli)
+	chainData := rpc.NewSyncedChainData(indexerInstance.DB(), hldb, blockFeed.IsSynced, mm.GetCurrentHeight())
+	rpccli := rpc.NewRpcClient(abcicli, chainData)
 
 	// rest cache invalidate channel
 	cacheInvalidateChan := make(chan int64)
@@ -209,8 +228,13 @@ func main() {
 			hldb.SetWriteHeight(feed.Block.Height)
 			batchedOrigin.Open()
 			if injectErr := mm.Inject(feed.Block); injectErr != nil {
-				// rollback last block
-				if rollbackBatch != nil {
+				// rollback last block, unless the upgrade module refused this block:
+				// the previous block is valid then, and undoing it leaves a database
+				// that neither the old nor the new binary can continue from
+				if rollbackBatch != nil && isUpgradeHalt(app, feed.Block.Height) {
+					fmt.Println("upgrade halt: previous block kept")
+					rollbackBatch.Close()
+				} else if rollbackBatch != nil {
 					fmt.Println("rollback previous block")
 					rollbackBatch.WriteSync()
 					rollbackBatch.Close()
@@ -242,6 +266,7 @@ func main() {
 			}
 
 			hldb.ClearWriteHeight()
+			chainData.SetLatestHeight(feed.Block.Height)
 
 			cacheInvalidateChan <- feed.Block.Height
 		}
@@ -251,6 +276,17 @@ func main() {
 // Pass this in as an option to use a dbStoreAdapter instead of an IAVLStore for simulation speed.
 func fauxMerkleModeOpt(app *baseapp.BaseApp) {
 	app.SetFauxMerkleMode()
+}
+
+// isUpgradeHalt checks the upgrade plan at the last committed block, the state
+// the failed block was applied on
+func isUpgradeHalt(app *terra.TerraApp, height int64) bool {
+	ctx, err := app.CreateQueryContext(0, false)
+	if err != nil {
+		log.Printf("[sync] cannot read upgrade plan: %v", err)
+		return false
+	}
+	return mantlemint.IsUpgradeHalt(ctx, app.UpgradeKeeper, height)
 }
 
 func getGenesisDoc(genesisPath string) *tendermint.GenesisDoc {
