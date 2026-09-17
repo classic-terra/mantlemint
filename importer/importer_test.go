@@ -1,11 +1,13 @@
 package importer
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -101,7 +103,7 @@ func runImport(t *testing.T, cfg Config) (*Report, error) {
 		cfg.Workers = 2
 	}
 	cfg.Logf = t.Logf
-	return Run(cfg)
+	return Run(context.Background(), cfg)
 }
 
 func TestRunImportServesThroughMantlemintStack(t *testing.T) {
@@ -289,18 +291,18 @@ func TestVerifyStoreDetectsUnreadableOrDifferentEntries(t *testing.T) {
 	assert.Nil(t, w.Set([]byte("s/k:bank0/x"), []byte("v")))
 	assert.Nil(t, w.Close())
 
-	assert.Nil(t, verifyStore(target.driver, "bank", 10, written))
+	assert.Nil(t, verifyStore(target.driver, "bank", 10, written, new(atomic.Bool)))
 
 	missing := newLeafDigest()
 	for i := 0; i < 3; i++ {
 		missing.add([]byte(fmt.Sprintf("s/k:bank/%d", i)), []byte("v"))
 	}
-	assert.ErrorContains(t, verifyStore(target.driver, "bank", 10, missing), "wrote 3 leaves but 2 are readable")
+	assert.ErrorContains(t, verifyStore(target.driver, "bank", 10, missing, new(atomic.Bool)), "wrote 3 leaves but 2 are readable")
 
 	different := newLeafDigest()
 	different.add([]byte("s/k:bank/0"), []byte("v"))
 	different.add([]byte("s/k:bank/1"), []byte("changed"))
-	assert.ErrorContains(t, verifyStore(target.driver, "bank", 10, different), "differ from the leaves written")
+	assert.ErrorContains(t, verifyStore(target.driver, "bank", 10, different, new(atomic.Bool)), "differ from the leaves written")
 }
 
 func TestRunWithConcurrentWorkersAndSmallFlushes(t *testing.T) {
@@ -354,4 +356,42 @@ func TestFormatProgress(t *testing.T) {
 		formatProgress(3_000_000, 12_000_000, 600*time.Second))
 	// without a usable total, only the count and rate are known
 	assert.Equal(t, "2000000 leaves, 1000 leaves/s", formatProgress(2_000_000, 0, 2000*time.Second))
+}
+
+func TestRunInterruptedBeforeWritingLeavesNoTarget(t *testing.T) {
+	source := newSourceHome(t, 3)
+	target := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := Run(ctx, Config{AppHome: source, MantlemintHome: target, MantlemintDB: "mantlemint", Workers: 2})
+	assert.True(t, errors.Is(err, context.Canceled), "got %v", err)
+	assert.False(t, errors.Is(err, ErrIncompleteImport))
+	entries, err := os.ReadDir(target)
+	assert.Nil(t, err)
+	assert.Empty(t, entries)
+}
+
+func TestRunInterruptedWhileImportingMarksTargetIncomplete(t *testing.T) {
+	source := newSourceHome(t, 3)
+	target := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// the progress reporter first fires before any store is copied
+	_, err := Run(ctx, Config{
+		AppHome: source, MantlemintHome: target, MantlemintDB: "mantlemint", Workers: 2,
+		Progress:         func([]StoreProgress) { cancel() },
+		ProgressInterval: time.Hour,
+	})
+	assert.True(t, errors.Is(err, context.Canceled), "got %v", err)
+	assert.True(t, errors.Is(err, ErrIncompleteImport), "got %v", err)
+	assert.ErrorContains(t, err, "delete mantlemint.db and data/wasm in "+target)
+
+	db := openImported(t, target)
+	state, err := db.driver.ImportState()
+	assert.Nil(t, err)
+	assert.Equal(t, heleveldb.ImportStateInProgress, state)
+	_, err = os.Stat(filepath.Join(target, "data", "wasm"))
+	assert.True(t, os.IsNotExist(err), "wasm is copied after the stores")
 }

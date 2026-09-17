@@ -2,6 +2,7 @@ package importer
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
@@ -65,7 +66,9 @@ type Report struct {
 var ErrIncompleteImport = errors.New("import did not complete")
 
 // Run imports state at a single height into a fresh mantlemint database.
-func Run(cfg Config) (*Report, error) {
+// Cancelling ctx stops the import; once the target exists it is left marked
+// incomplete, as after any other failure.
+func Run(ctx context.Context, cfg Config) (*Report, error) {
 	if cfg.AppHome == "" || cfg.MantlemintHome == "" || cfg.MantlemintDB == "" {
 		return nil, fmt.Errorf("app home, mantlemint home and mantlemint db are required")
 	}
@@ -106,31 +109,42 @@ func Run(cfg Config) (*Report, error) {
 	}
 	cfg.Logf("[import] height %d, chain id %s, %d stores", height, comet.ChainID(), len(appState.StoreNames()))
 
+	// nothing is written yet, so stopping here leaves no target behind
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	target, err := OpenTarget(cfg.MantlemintHome, cfg.MantlemintDB)
 	if err != nil {
 		return nil, err
 	}
 	defer target.Close()
 
-	report, err := importInto(cfg, target, appState, comet)
+	report, err := importInto(ctx, cfg, target, appState, comet)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w; delete %s.db in %s before retrying",
-			ErrIncompleteImport, err, cfg.MantlemintDB, cfg.MantlemintHome)
+		leftovers := cfg.MantlemintDB + ".db"
+		if !cfg.SkipWasm {
+			leftovers += " and data/wasm"
+		}
+		return nil, fmt.Errorf("%w: %w; delete %s in %s before retrying",
+			ErrIncompleteImport, err, leftovers, cfg.MantlemintHome)
 	}
 	return report, nil
 }
 
-func importInto(cfg Config, target *Target, appState *AppStateSource, comet *CometSource) (*Report, error) {
+func importInto(ctx context.Context, cfg Config, target *Target, appState *AppStateSource, comet *CometSource) (*Report, error) {
 	height := appState.Height()
 	if err := target.driver.SetImportState(heleveldb.ImportStateInProgress); err != nil {
 		return nil, err
 	}
 
-	stores, err := importStores(cfg, target.driver, appState)
+	stores, err := importStores(ctx, cfg, target.driver, appState)
 	if err != nil {
 		return nil, err
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	cfg.Logf("[import] seeding CometBFT state and commit metadata at height %d", height)
 	err = target.WriteAt(height, func(db dbm.DB) error {
 		if err := comet.SeedInto(wrapped.NewWrappedDB(db), height); err != nil {
@@ -151,7 +165,7 @@ func importInto(cfg Config, target *Target, appState *AppStateSource, comet *Com
 
 	if !cfg.SkipWasm {
 		cfg.Logf("[import] copying %s to %s", wasmSource(cfg), wasmDestination(cfg))
-		if err := copyWasmDir(wasmSource(cfg), wasmDestination(cfg)); err != nil {
+		if err := copyWasmDir(ctx, wasmSource(cfg), wasmDestination(cfg)); err != nil {
 			return nil, err
 		}
 	}
@@ -168,11 +182,14 @@ func importInto(cfg Config, target *Target, appState *AppStateSource, comet *Com
 
 // importStores copies every store concurrently, then re-reads each store through
 // the driver at the import height to prove the written entries are servable.
-func importStores(cfg Config, driver *heleveldb.Driver, appState *AppStateSource) ([]StoreReport, error) {
+func importStores(ctx context.Context, cfg Config, driver *heleveldb.Driver, appState *AppStateSource) ([]StoreReport, error) {
 	names := appState.StoreNames()
 	// reading every root first costs seconds and gives the overall progress a fixed total
 	totals := make([]int64, len(names))
 	for i, name := range names {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		size, err := appState.StoreSize(name)
 		if err != nil {
 			return nil, err
@@ -200,6 +217,16 @@ func importStores(cfg Config, driver *heleveldb.Driver, appState *AppStateSource
 		errOnce.Do(func() { firstErr = err })
 		failed.Store(true)
 	}
+	// cancellation stops the workers the same way a failed store does
+	storesDone := make(chan struct{})
+	defer close(storesDone)
+	go func() {
+		select {
+		case <-ctx.Done():
+			fail(ctx.Err())
+		case <-storesDone:
+		}
+	}()
 
 	for i := 0; i < cfg.Workers; i++ {
 		wg.Add(1)
@@ -224,6 +251,7 @@ func importStores(cfg Config, driver *heleveldb.Driver, appState *AppStateSource
 	close(jobs)
 	wg.Wait()
 	close(results)
+	errOnce.Do(func() {}) // no failure can be recorded past this point
 
 	if firstErr != nil {
 		return nil, firstErr
@@ -248,7 +276,7 @@ func formatProgress(done, total int64, elapsed time.Duration) string {
 		done, total, 100*float64(done)/float64(total), rate, eta.Round(time.Second))
 }
 
-var errAborted = errors.New("aborted after another store failed")
+var errAborted = errors.New("aborted after another store failed or the import was interrupted")
 
 func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource, tracker *progressTracker, name string, failed *atomic.Bool) (StoreReport, error) {
 	height := appState.Height()
@@ -295,7 +323,7 @@ func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource,
 	}
 
 	tracker.verifying(name)
-	if err := verifyStore(driver, name, height, written); err != nil {
+	if err := verifyStore(driver, name, height, written, failed); err != nil {
 		return StoreReport{}, err
 	}
 	tracker.finished(name)
@@ -308,7 +336,7 @@ func importStore(cfg Config, driver *heleveldb.Driver, appState *AppStateSource,
 // verifyStore reads the store back the way an explicit-height query does, through
 // the iterator key index resolving each value at height, and requires the same
 // keys and values, in the same order, as were written.
-func verifyStore(driver *heleveldb.Driver, name string, height int64, written *leafDigest) error {
+func verifyStore(driver *heleveldb.Driver, name string, height int64, written *leafDigest, failed *atomic.Bool) error {
 	start := []byte(fmt.Sprintf(storeKeyPrefix, name))
 	it, err := driver.Iterator(height, start, storetypes.PrefixEndBytes(start))
 	if err != nil {
@@ -318,6 +346,9 @@ func verifyStore(driver *heleveldb.Driver, name string, height int64, written *l
 
 	read := newLeafDigest()
 	for ; it.Valid(); it.Next() {
+		if failed.Load() {
+			return errAborted
+		}
 		read.add(it.Key(), it.Value())
 	}
 	if read.count != written.count {
@@ -388,7 +419,7 @@ func checkWasmPaths(src, dst string) (string, error) {
 // copyWasmDir copies the wasm code directory. A symlinked source root is
 // followed; symlinks inside it are refused, since recreating them would point
 // the copy back into the source node's files.
-func copyWasmDir(src, dst string) error {
+func copyWasmDir(ctx context.Context, src, dst string) error {
 	resolved, err := checkWasmPaths(src, dst)
 	if err != nil {
 		return err
@@ -397,6 +428,9 @@ func copyWasmDir(src, dst string) error {
 	return filepath.WalkDir(resolved, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		rel, err := filepath.Rel(resolved, path)
 		if err != nil {

@@ -2,6 +2,7 @@ package importer
 
 import (
 	"bytes"
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,4 +50,16 @@ func TestMainReportsFailure(t *testing.T) {
 	code := Main([]string{"-app-home", t.TempDir(), "-mantlemint-home", t.TempDir()}, &stdout, &stderr)
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr.String(), "[import]")
+}
+
+func TestMainReportsInterruptedImport(t *testing.T) {
+	source := newSourceHome(t, 3)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var stdout, stderr bytes.Buffer
+
+	code := run(ctx, []string{"-app-home", source, "-mantlemint-home", t.TempDir()}, &stdout, &stderr)
+	assert.Equal(t, 130, code)
+	assert.Contains(t, stderr.String(), "interrupted before anything was written")
+	assert.Empty(t, stdout.String())
 }

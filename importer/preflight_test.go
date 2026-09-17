@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -97,7 +98,7 @@ func TestCopyWasmDirResolvesSymlinkedRoot(t *testing.T) {
 	assert.Nil(t, os.Symlink(real, src))
 	dst := filepath.Join(t.TempDir(), "data", "wasm")
 
-	assert.Nil(t, copyWasmDir(src, dst))
+	assert.Nil(t, copyWasmDir(context.Background(), src, dst))
 
 	info, err := os.Lstat(dst)
 	assert.Nil(t, err)
@@ -117,6 +118,6 @@ func TestCopyWasmDirRejectsSymlinksInside(t *testing.T) {
 	assert.Nil(t, os.MkdirAll(src, 0o755))
 	assert.Nil(t, os.Symlink(t.TempDir(), filepath.Join(src, "linked")))
 
-	err := copyWasmDir(src, filepath.Join(t.TempDir(), "wasm"))
+	err := copyWasmDir(context.Background(), src, filepath.Join(t.TempDir(), "wasm"))
 	assert.ErrorContains(t, err, "symlink")
 }

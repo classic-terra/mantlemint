@@ -1,12 +1,15 @@
 package importer
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -18,8 +21,19 @@ import (
 const CommandName = "import"
 
 // Main runs `mantlemint import` with the arguments following the subcommand
-// and returns the process exit code.
+// and returns the process exit code. The first SIGINT or SIGTERM stops the
+// import; a second one exits immediately.
 func Main(args []string, stdout, stderr io.Writer) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop() // restore the default handler for a second signal
+	}()
+	return run(ctx, args, stdout, stderr)
+}
+
+func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	var cfg Config
 	fs := flag.NewFlagSet("mantlemint "+CommandName, flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -71,12 +85,22 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		cfg.Progress = NewLiveProgress(stderr, rows).Render
 	}
 
-	report, err := Run(cfg)
+	report, err := Run(ctx, cfg)
 	if err != nil {
-		if errors.Is(err, ErrIncompleteImport) {
+		interrupted := errors.Is(err, context.Canceled)
+		switch {
+		case interrupted && errors.Is(err, ErrIncompleteImport):
+			logger.Printf("[import] INTERRUPTED; mantlemint will refuse to start on this database")
+		case interrupted:
+			logger.Printf("[import] interrupted before anything was written")
+			return 130
+		case errors.Is(err, ErrIncompleteImport):
 			logger.Printf("[import] FAILED; mantlemint will refuse to start on this database")
 		}
 		logger.Printf("[import] %v", err)
+		if interrupted {
+			return 130
+		}
 		return 1
 	}
 
