@@ -4,11 +4,13 @@ import (
 	"sync/atomic"
 
 	dbm "github.com/cometbft/cometbft-db"
+	abci "github.com/cometbft/cometbft/abci/types"
 	sm "github.com/cometbft/cometbft/state"
 	tendermint "github.com/cometbft/cometbft/types"
 	"github.com/terra-money/mantlemint/db/hld"
 	"github.com/terra-money/mantlemint/db/wrapped"
 	"github.com/terra-money/mantlemint/indexer/block"
+	"github.com/terra-money/mantlemint/indexer/tx"
 )
 
 // ChainData supplies the chain data that a CometBFT node serves over RPC and
@@ -20,6 +22,10 @@ type ChainData interface {
 	// Block returns the block at height, or a nil block if it is not available.
 	Block(height int64) (*tendermint.Block, *tendermint.BlockID, error)
 	Validators(height int64) (*tendermint.ValidatorSet, error)
+	// BlockResults returns the FinalizeBlock response the state store recorded at height.
+	BlockResults(height int64) (*abci.ResponseFinalizeBlock, error)
+	// TxLocation finds the height and in-block index of a tx by its hash.
+	TxLocation(hash []byte) (height int64, index uint32, found bool, err error)
 	IsSynced() bool
 }
 
@@ -52,11 +58,23 @@ func (c *SyncedChainData) Block(height int64) (*tendermint.Block, *tendermint.Bl
 	return block.LoadBlock(c.indexerDB, height)
 }
 
-// Validators reads through a view limited to the latest flushed height, so a
-// block being applied concurrently is never visible.
 func (c *SyncedChainData) Validators(height int64) (*tendermint.ValidatorSet, error) {
+	return c.stateStore().LoadValidators(height)
+}
+
+func (c *SyncedChainData) BlockResults(height int64) (*abci.ResponseFinalizeBlock, error) {
+	return c.stateStore().LoadFinalizeBlockResponse(height)
+}
+
+func (c *SyncedChainData) TxLocation(hash []byte) (int64, uint32, bool, error) {
+	return tx.LoadTxLocation(c.indexerDB, hash)
+}
+
+// stateStore reads through a view limited to the latest flushed height, so a
+// block being applied concurrently is never visible.
+func (c *SyncedChainData) stateStore() sm.Store {
 	view := c.hldb.BranchHeightLimitedDB(c.LatestHeight())
-	return sm.NewStore(wrapped.NewWrappedDB(view), sm.StoreOptions{}).LoadValidators(height)
+	return sm.NewStore(wrapped.NewWrappedDB(view), sm.StoreOptions{})
 }
 
 func (c *SyncedChainData) IsSynced() bool {

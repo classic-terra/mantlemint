@@ -1,6 +1,7 @@
 package tx
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -50,6 +51,18 @@ func TestIndexTx(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, txns)
 	fmt.Println(string(txns))
+
+	hash, err := hex.DecodeString("C794D5CE7179AED455C10E8E7645FE8F8A40BA0C97F1275AB87B5E88A52CB2C3")
+	assert.Nil(t, err)
+	height, index, found, err := LoadTxLocation(db, hash)
+	assert.Nil(t, err)
+	assert.True(t, found)
+	assert.Equal(t, int64(4814775), height)
+	assert.Equal(t, block.Txs[index].Hash(), []byte(hash))
+
+	_, _, found, err = LoadTxLocation(db, make([]byte, 32))
+	assert.Nil(t, err)
+	assert.False(t, found)
 }
 
 // TestTxLogsMatchPublicNode rebuilds the logs of real columbus-5 txs from their

@@ -1,6 +1,7 @@
 package tx
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -79,6 +80,9 @@ var IndexTx = indexer.CreateIndexer(func(batch dbm.Batch, block *tm.Block, block
 		batchSetErr := batch.Set(getKey(txHashes[txIndex]), txRecordJSON)
 		if batchSetErr != nil {
 			return batchSetErr
+		}
+		if err := batch.Set(getLocationKey(txHashes[txIndex]), encodeTxLocation(block.Height, uint32(txIndex))); err != nil {
+			return err
 		}
 	}
 
@@ -166,4 +170,24 @@ func eventMsgIndex(event abci.Event) (uint32, bool) {
 		}
 	}
 	return 0, false
+}
+
+// LoadTxLocation returns the height and in-block index of the tx with the
+// given hash. Txs indexed before locations were recorded are not found.
+func LoadTxLocation(indexerDB dbm.DB, hash []byte) (height int64, index uint32, found bool, err error) {
+	bz, err := indexerDB.Get(getLocationKey(fmt.Sprintf("%X", hash)))
+	if err != nil || bz == nil {
+		return 0, 0, false, err
+	}
+	if len(bz) != 12 {
+		return 0, 0, false, fmt.Errorf("tx %X: malformed location record", hash)
+	}
+	return int64(binary.BigEndian.Uint64(bz[:8])), binary.BigEndian.Uint32(bz[8:]), true, nil
+}
+
+func encodeTxLocation(height int64, index uint32) []byte {
+	bz := make([]byte, 12)
+	binary.BigEndian.PutUint64(bz[:8], uint64(height))
+	binary.BigEndian.PutUint32(bz[8:], index)
+	return bz
 }

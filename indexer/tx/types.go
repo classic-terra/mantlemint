@@ -34,6 +34,13 @@ var (
 )
 
 var (
+	locationPrefix = []byte("tx/location:")
+	getLocationKey = func(hash string) []byte {
+		return lib.ConcatBytes(locationPrefix, []byte(hash))
+	}
+)
+
+var (
 	byHeightPrefix = []byte("tx/height:")
 	getByHeightKey = func(height uint64) []byte {
 		return lib.ConcatBytes(byHeightPrefix, lib.UintToBigEndian(height))

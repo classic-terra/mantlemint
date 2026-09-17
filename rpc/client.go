@@ -2,13 +2,18 @@ package rpc
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
+	"slices"
+	"strings"
 
 	abcicli "github.com/cometbft/cometbft/abci/client"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/bytes"
 	tmlog "github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/pubsub/query/syntax"
 	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
 	tendermint "github.com/cometbft/cometbft/types"
@@ -189,8 +194,23 @@ func (m *MantlemintRPCClient) BlockByHash(ctx context.Context, hash []byte) (*co
 	return nil, errUnsupportedRPC
 }
 
-func (m *MantlemintRPCClient) BlockResults(ctx context.Context, height *int64) (*coretypes.ResultBlockResults, error) {
-	return nil, errUnsupportedRPC
+func (m *MantlemintRPCClient) BlockResults(ctx context.Context, heightPtr *int64) (*coretypes.ResultBlockResults, error) {
+	height, err := resolveHeight(m.chain.LatestHeight(), heightPtr)
+	if err != nil {
+		return nil, err
+	}
+	results, err := m.chain.BlockResults(height)
+	if err != nil {
+		return nil, err
+	}
+	return &coretypes.ResultBlockResults{
+		Height:                height,
+		TxsResults:            results.TxResults,
+		FinalizeBlockEvents:   results.Events,
+		ValidatorUpdates:      results.ValidatorUpdates,
+		ConsensusParamUpdates: results.ConsensusParamUpdates,
+		AppHash:               results.AppHash,
+	}, nil
 }
 
 func (m *MantlemintRPCClient) Commit(ctx context.Context, height *int64) (*coretypes.ResultCommit, error) {
@@ -225,11 +245,119 @@ func (m *MantlemintRPCClient) Validators(ctx context.Context, heightPtr *int64, 
 }
 
 func (m *MantlemintRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*coretypes.ResultTx, error) {
-	return nil, errUnsupportedRPC
+	height, index, found, err := m.chain.TxLocation(hash)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		// the SDK maps "not found" to a NotFound status
+		return nil, fmt.Errorf("tx (%X) not found", hash)
+	}
+	txs, err := m.txsAt(height, prove)
+	if err != nil {
+		return nil, err
+	}
+	if int(index) >= len(txs) {
+		return nil, fmt.Errorf("tx (%X) not found: block %d has %d txs", hash, height, len(txs))
+	}
+	return txs[index], nil
 }
 
-func (m *MantlemintRPCClient) TxSearch(ctx context.Context, query string, prove bool, page, perPage *int, orderBy string) (*coretypes.ResultTxSearch, error) {
-	return nil, errUnsupportedRPC
+// TxSearch answers the queries mantlemint can resolve from its own indexes: a
+// single "tx.height = N" or "tx.hash = 'HASH'" condition. Searching by other
+// events would need a full event index, which mantlemint does not keep.
+func (m *MantlemintRPCClient) TxSearch(ctx context.Context, query string, prove bool, pagePtr, perPagePtr *int, orderBy string) (*coretypes.ResultTxSearch, error) {
+	if orderBy != "" && orderBy != "asc" && orderBy != "desc" {
+		return nil, errors.New("expected order_by to be either `asc` or `desc` or empty")
+	}
+	cond, err := parseTxQuery(query)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []*coretypes.ResultTx
+	switch cond.Tag {
+	case "tx.height":
+		height, ok := new(big.Int).SetString(cond.Arg.Value(), 10)
+		if !ok || !height.IsInt64() || height.Int64() <= 0 || height.Int64() > m.chain.LatestHeight() {
+			break // like an event index, an unknown height matches nothing
+		}
+		if results, err = m.txsAt(height.Int64(), prove); err != nil {
+			return nil, err
+		}
+	case "tx.hash":
+		hash, err := hex.DecodeString(cond.Arg.Value())
+		if err != nil {
+			return nil, fmt.Errorf("invalid tx.hash %q: %w", cond.Arg.Value(), err)
+		}
+		switch tx, err := m.Tx(ctx, hash, prove); {
+		case err == nil:
+			results = []*coretypes.ResultTx{tx}
+		case !strings.Contains(err.Error(), "not found"):
+			return nil, err
+		}
+	}
+	if orderBy == "desc" {
+		slices.Reverse(results)
+	}
+
+	total := len(results)
+	perPage := validatePerPage(perPagePtr)
+	page, err := validatePage(pagePtr, perPage, total)
+	if err != nil {
+		return nil, err
+	}
+	skip := (page - 1) * perPage
+	return &coretypes.ResultTxSearch{Txs: results[skip : skip+min(perPage, total-skip)], TotalCount: total}, nil
+}
+
+var errUnsupportedQuery = errors.New("mantlemint only supports tx searches by a single tx.height = N or tx.hash = 'HASH' condition")
+
+func parseTxQuery(query string) (syntax.Condition, error) {
+	q, err := syntax.Parse(query)
+	if err != nil {
+		return syntax.Condition{}, err
+	}
+	if len(q) != 1 || q[0].Op != syntax.TEq {
+		return syntax.Condition{}, errUnsupportedQuery
+	}
+	switch cond := q[0]; {
+	case cond.Tag == "tx.height" && cond.Arg.Type == syntax.TNumber,
+		cond.Tag == "tx.hash" && cond.Arg.Type == syntax.TString:
+		return cond, nil
+	}
+	return syntax.Condition{}, errUnsupportedQuery
+}
+
+// txsAt returns every tx of the block at height with its execution result, or
+// none if the block is not available, such as below an import height.
+func (m *MantlemintRPCClient) txsAt(height int64, prove bool) ([]*coretypes.ResultTx, error) {
+	block, _, err := m.chain.Block(height)
+	if err != nil || block == nil {
+		return nil, err
+	}
+	results, err := m.chain.BlockResults(height)
+	if err != nil {
+		return nil, err
+	}
+	if len(results.TxResults) != len(block.Txs) {
+		return nil, fmt.Errorf("block %d has %d txs but %d results", height, len(block.Txs), len(results.TxResults))
+	}
+
+	txs := make([]*coretypes.ResultTx, len(block.Txs))
+	for i, tx := range block.Txs {
+		txs[i] = &coretypes.ResultTx{
+			Hash:     tx.Hash(),
+			Height:   height,
+			Index:    uint32(i),
+			TxResult: *results.TxResults[i],
+			Tx:       tx,
+		}
+		if prove {
+			txs[i].Proof = block.Txs.Proof(i)
+		}
+	}
+	return txs, nil
 }
 
 func (m *MantlemintRPCClient) BlockSearch(ctx context.Context, query string, page, perPage *int, orderBy string) (*coretypes.ResultBlockSearch, error) {
