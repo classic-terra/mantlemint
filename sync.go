@@ -228,8 +228,13 @@ func main() {
 			hldb.SetWriteHeight(feed.Block.Height)
 			batchedOrigin.Open()
 			if injectErr := mm.Inject(feed.Block); injectErr != nil {
-				// rollback last block
-				if rollbackBatch != nil {
+				// rollback last block, unless the upgrade module refused this block:
+				// the previous block is valid then, and undoing it leaves a database
+				// that neither the old nor the new binary can continue from
+				if rollbackBatch != nil && isUpgradeHalt(app, feed.Block.Height) {
+					fmt.Println("upgrade halt: previous block kept")
+					rollbackBatch.Close()
+				} else if rollbackBatch != nil {
 					fmt.Println("rollback previous block")
 					rollbackBatch.WriteSync()
 					rollbackBatch.Close()
@@ -271,6 +276,17 @@ func main() {
 // Pass this in as an option to use a dbStoreAdapter instead of an IAVLStore for simulation speed.
 func fauxMerkleModeOpt(app *baseapp.BaseApp) {
 	app.SetFauxMerkleMode()
+}
+
+// isUpgradeHalt checks the upgrade plan at the last committed block, the state
+// the failed block was applied on
+func isUpgradeHalt(app *terra.TerraApp, height int64) bool {
+	ctx, err := app.CreateQueryContext(0, false)
+	if err != nil {
+		log.Printf("[sync] cannot read upgrade plan: %v", err)
+		return false
+	}
+	return mantlemint.IsUpgradeHalt(ctx, app.UpgradeKeeper, height)
 }
 
 func getGenesisDoc(genesisPath string) *tendermint.GenesisDoc {
