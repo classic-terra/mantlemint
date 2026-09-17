@@ -3,9 +3,12 @@ package tx
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
 
 	terra "github.com/classic-terra/core/v4/app"
 	dbm "github.com/cometbft/cometbft-db"
+	abci "github.com/cometbft/cometbft/abci/types"
 	tmjson "github.com/cometbft/cometbft/libs/json"
 	tm "github.com/cometbft/cometbft/types"
 	"github.com/terra-money/mantlemint/indexer"
@@ -60,14 +63,7 @@ var IndexTx = indexer.CreateIndexer(func(batch dbm.Batch, block *tm.Block, block
 		byHeightPayload[txIndex].GasWanted = response.GasWanted
 		byHeightPayload[txIndex].Height = block.Height
 		byHeightPayload[txIndex].RawLog = response.Log
-		byHeightPayload[txIndex].Logs = func() json.RawMessage {
-			if response.Code == 0 {
-				return []byte(response.Log)
-			} else {
-				out, _ := json.Marshal([]string{})
-				return out
-			}
-		}()
+		byHeightPayload[txIndex].Logs = txLogs(evc.TxResults[txIndex])
 		byHeightPayload[txIndex].TxHash = fmt.Sprintf("%X", hash)
 		byHeightPayload[txIndex].Timestamp = block.Time
 		byHeightPayload[txIndex].Tx = txJSON
@@ -99,3 +95,75 @@ var IndexTx = indexer.CreateIndexer(func(batch dbm.Batch, block *tm.Block, block
 
 	return nil
 })
+
+// messageLog is one entry of the legacy per-message tx logs.
+type messageLog struct {
+	MsgIndex uint32     `json:"msg_index"`
+	Log      string     `json:"log"`
+	Events   []logEvent `json:"events"`
+}
+
+type logEvent struct {
+	Type       string         `json:"type"`
+	Attributes []logAttribute `json:"attributes"`
+}
+
+type logAttribute struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+const msgIndexKey = "msg_index"
+
+// txLogs returns the per-message logs of a successful tx. Before cosmos-sdk
+// 0.50 the tx log already held them as JSON. Since then the log is empty, and
+// the logs are rebuilt from the events the way other classic nodes serve them:
+// events carrying a msg_index attribute are grouped by it, in message order,
+// without that attribute; tx-level events, which have no msg_index, are left out.
+func txLogs(result *abci.ExecTxResult) json.RawMessage {
+	if result.Code != 0 {
+		return json.RawMessage("[]")
+	}
+	if result.Log != "" && json.Valid([]byte(result.Log)) {
+		return json.RawMessage(result.Log)
+	}
+
+	logs := []messageLog{}
+	byIndex := map[uint32]int{}
+	for _, event := range result.Events {
+		index, ok := eventMsgIndex(event)
+		if !ok {
+			continue
+		}
+		pos, seen := byIndex[index]
+		if !seen {
+			pos = len(logs)
+			byIndex[index] = pos
+			logs = append(logs, messageLog{MsgIndex: index, Events: []logEvent{}})
+		}
+		logEvt := logEvent{Type: event.Type, Attributes: []logAttribute{}}
+		for _, attr := range event.Attributes {
+			if attr.Key != msgIndexKey {
+				logEvt.Attributes = append(logEvt.Attributes, logAttribute{Key: attr.Key, Value: attr.Value})
+			}
+		}
+		logs[pos].Events = append(logs[pos].Events, logEvt)
+	}
+	sort.SliceStable(logs, func(i, j int) bool { return logs[i].MsgIndex < logs[j].MsgIndex })
+
+	out, err := json.Marshal(logs)
+	if err != nil {
+		return json.RawMessage("[]")
+	}
+	return out
+}
+
+func eventMsgIndex(event abci.Event) (uint32, bool) {
+	for _, attr := range event.Attributes {
+		if attr.Key == msgIndexKey {
+			index, err := strconv.ParseUint(attr.Value, 10, 32)
+			return uint32(index), err == nil
+		}
+	}
+	return 0, false
+}
