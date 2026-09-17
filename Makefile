@@ -10,6 +10,9 @@ BUILDDIR ?= $(CURDIR)/build
 GOPRIVATE ?= $(shell go env GOPRIVATE)
 DOCKER_PRIVATE_ARGS := $(if $(GOPRIVATE),--build-arg GOPRIVATE=$(GOPRIVATE) --ssh default)
 
+# build/ is also a directory; without .PHONY make treats "build" as up to date and skips it
+.PHONY: build lint lint-fix lint-strict build-static build-release install clean
+
 build: go.sum
 ifeq ($(OS),Windows_NT)
 	exit 1
