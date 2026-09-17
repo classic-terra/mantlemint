@@ -22,9 +22,13 @@ type CacheBackend struct {
 	cacheType       string
 	mtx             *sync.RWMutex
 
-	// subscribe to cache for same request URI
-	resultChan     map[string]chan *ResponseCache
-	subscribeCount map[string]int
+	// requests being processed, by URI; identical requests wait for their result
+	inFlight map[string]*inFlightRequest
+}
+
+type inFlightRequest struct {
+	done     chan struct{}
+	response *ResponseCache // set before done is closed; nil if the handler panicked
 }
 
 func NewCacheBackend(cacheSize int, cacheType string) *CacheBackend {
@@ -41,8 +45,7 @@ func NewCacheBackend(cacheSize int, cacheType string) *CacheBackend {
 		serveCount:      0,
 		cacheType:       cacheType,
 		mtx:             new(sync.RWMutex),
-		resultChan:      make(map[string]chan *ResponseCache),
-		subscribeCount:  make(map[string]int),
+		inFlight:        make(map[string]*inFlightRequest),
 	}
 }
 
@@ -112,65 +115,37 @@ func (cb *CacheBackend) HandleCachedHTTP(writer http.ResponseWriter, request *ht
 	}
 
 	cb.mtx.Lock()
-	resChan, isInTransit := cb.resultChan[uri]
-
-	// if isInTransit is false, this is the first time we're processing this query
-	// run actual querier
-	if !isInTransit {
-		c := make(chan *ResponseCache)
-		cb.resultChan[uri] = c
-		cb.subscribeCount[uri] = 0
+	pending, isInTransit := cb.inFlight[uri]
+	if isInTransit {
+		// same query is processing but not cached yet; wait for its result
 		cb.mtx.Unlock()
-
-		recorder := httptest.NewRecorder()
-		var cache *ResponseCache
-
-		go func() {
-			<-request.Context().Done()
-
-			// feed all subscriptions
-			cb.mtx.RLock()
-			subscribeCount := cb.subscribeCount[uri]
-			cb.mtx.RUnlock()
-
-			if cache != nil {
-				for i := 0; i < subscribeCount; i++ {
-					c <- cache
-				}
-			}
-			close(c)
-
-			cb.mtx.Lock()
-			delete(cb.subscribeCount, uri)
-			delete(cb.resultChan, uri)
-			cb.mtx.Unlock()
-		}()
-
-		// process request
-		handler.ServeHTTP(recorder, request)
-
-		// set in cache
-		cache = cb.Set(request.URL.String(), recorder.Code, recorder.Body.Bytes())
-
-		// write
-		writer.WriteHeader(recorder.Code)
-		writer.Write(recorder.Body.Bytes())
-
+		<-pending.done
+		if pending.response != nil {
+			writer.WriteHeader(pending.response.status)
+			writer.Write(pending.response.body)
+		} else {
+			writer.WriteHeader(503)
+			writer.Write([]byte("Service Unavailable"))
+		}
 		return
 	}
 
-	// same query is processing but not cached yet.
-	// subscribe for cache result here.
-	cb.subscribeCount[uri]++
+	// first request for this URI: run the actual querier. Waiters are released
+	// when the handler returns, even if it panics.
+	pending = &inFlightRequest{done: make(chan struct{})}
+	cb.inFlight[uri] = pending
 	cb.mtx.Unlock()
+	defer func() {
+		cb.mtx.Lock()
+		delete(cb.inFlight, uri)
+		cb.mtx.Unlock()
+		close(pending.done)
+	}()
 
-	response, ok := <-resChan
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
 
-	if ok {
-		writer.WriteHeader(response.status)
-		writer.Write(response.body)
-	} else {
-		writer.WriteHeader(503)
-		writer.Write([]byte("Service Unavailable"))
-	}
+	pending.response = cb.Set(uri, recorder.Code, recorder.Body.Bytes())
+	writer.WriteHeader(recorder.Code)
+	writer.Write(recorder.Body.Bytes())
 }
